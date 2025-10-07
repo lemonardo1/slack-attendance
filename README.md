@@ -1,59 +1,112 @@
-# Worker + D1 Database
+# Slack 출퇴근 체크 봇
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/d1-template)
+Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 관리 봇입니다.
 
-![Worker + D1 Template Preview](https://imagedelivery.net/wSMYJvS3Xw-n339CbDyDIA/cb7cb0a9-6102-4822-633c-b76b7bb25900/public)
+## 기능
 
-<!-- dash-content-start -->
+- `/in` - 출근 체크
+- `/out` - 퇴근 체크
+- 웹 대시보드에서 최근 출퇴근 기록 확인
 
-D1 is Cloudflare's native serverless SQL database ([docs](https://developers.cloudflare.com/d1/)). This project demonstrates using a Worker with a D1 binding to execute a SQL statement. A simple frontend displays the result of this query:
+## 특징
 
-```SQL
-SELECT * FROM comments LIMIT 3;
+- 서버리스 아키텍처 (Cloudflare Workers)
+- D1 데이터베이스로 출퇴근 기록 저장
+- Slack 서명 검증을 통한 보안
+- 실시간 출퇴근 알림
+
+## 설치 방법
+
+### 1. 프로젝트 의존성 설치
+
+```bash
+npm install
 ```
 
-The D1 database is initialized with a `comments` table and this data:
+### 2. D1 데이터베이스 마이그레이션
 
-```SQL
-INSERT INTO comments (author, content)
-VALUES
-    ('Kristian', 'Congrats!'),
-    ('Serena', 'Great job!'),
-    ('Max', 'Keep up the good work!')
-;
+로컬 개발:
+```bash
+npm run seedLocalD1
 ```
 
-> [!IMPORTANT]
-> When using C3 to create this project, select "no" when it asks if you want to deploy. You need to follow this project's [setup steps](https://github.com/cloudflare/templates/tree/main/d1-template#setup-steps) before deploying.
-
-<!-- dash-content-end -->
-
-## Getting Started
-
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
-
-```
-npm create cloudflare@latest -- --template=cloudflare/templates/d1-template
+프로덕션 배포:
+```bash
+npx wrangler d1 migrations apply DB --remote
 ```
 
-A live public deployment of this template is available at [https://d1-template.templates.workers.dev](https://d1-template.templates.workers.dev)
+### 3. Slack 앱 설정
 
-## Setup Steps
+1. [Slack API](https://api.slack.com/apps)에서 새 앱 생성
+2. **Slash Commands** 설정:
+   - `/in` 커맨드 생성
+     - Request URL: `https://slack-attendance.lemonaatree.workers.dev//slack/command`
+   - `/out` 커맨드 생성
+     - Request URL: `https://slack-attendance.lemonaatree.workers.dev//slack/command`
+3. **Basic Information**에서 `Signing Secret` 복사
+4. **OAuth & Permissions**에서 다음 스코프 추가:
+   - `commands` - Slash Commands 사용
+   - `chat:write` - 메시지 전송
 
-1. Install the project dependencies with a package manager of your choice:
-   ```bash
-   npm install
-   ```
-2. Create a [D1 database](https://developers.cloudflare.com/d1/get-started/) with the name "d1-template-database":
-   ```bash
-   npx wrangler d1 create d1-template-database
-   ```
-   ...and update the `database_id` field in `wrangler.json` with the new database ID.
-3. Run the following db migration to initialize the database (notice the `migrations` directory in this project):
-   ```bash
-   npx wrangler d1 migrations apply --remote d1-template-database
-   ```
-4. Deploy the project!
-   ```bash
-   npx wrangler deploy
-   ```
+### 4. 환경 변수 설정
+
+`wrangler.json`에서 `SLACK_SIGNING_SECRET` 설정:
+
+```json
+{
+  "vars": {
+    "SLACK_SIGNING_SECRET": "your_signing_secret_here"
+  }
+}
+```
+
+또는 Cloudflare Dashboard에서 환경 변수로 설정할 수 있습니다.
+
+### 5. 배포
+
+```bash
+npm run deploy
+```
+
+배포 후 Slack 앱의 Request URL을 업데이트하세요:
+- `https://your-worker.workers.dev/slack/command`
+
+### 6. Slack 워크스페이스에 앱 설치
+
+1. Slack 앱 설정 페이지에서 **Install App** 클릭
+2. 워크스페이스에 권한 부여
+
+## 사용 방법
+
+Slack 채널에서:
+- `/in` - 출근 체크
+- `/out` - 퇴근 체크
+
+웹 브라우저에서:
+- `https://your-worker.workers.dev/` - 최근 출퇴근 기록 확인
+
+## 개발
+
+로컬 개발 서버 실행:
+```bash
+npm run dev
+```
+
+타입 체크:
+```bash
+npm run check
+```
+
+## 데이터베이스 스키마
+
+```sql
+CREATE TABLE attendance (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    team_id TEXT NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('in', 'out')),
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
