@@ -52,15 +52,19 @@
 
 ### 환경 변수 설정
 
-`wrangler.json` 파일에서 `SLACK_SIGNING_SECRET` 업데이트:
+`wrangler.json` 파일에서 환경 변수 업데이트:
 
 ```json
 {
   "vars": {
-    "SLACK_SIGNING_SECRET": "복사한_signing_secret_여기에_붙여넣기"
+    "SLACK_SIGNING_SECRET": "복사한_signing_secret_여기에_붙여넣기",
+    "ADMIN_PASSWORD": "원하는_관리자_비밀번호"
   }
 }
 ```
+
+- **SLACK_SIGNING_SECRET**: 3단계에서 복사한 Signing Secret
+- **ADMIN_PASSWORD**: `/stats` 관리자 페이지 접근용 비밀번호 (원하는 값으로 설정)
 
 ### 데이터베이스 마이그레이션
 
@@ -88,12 +92,21 @@ npm run deploy
 
 ## 8. 테스트
 
-Slack 워크스페이스에서:
+### Slack 워크스페이스에서:
 - `/in` 입력 → 출근 체크 확인
 - `/out` 입력 → 퇴근 체크 확인
 
-웹 브라우저에서:
-- `https://slack-attendance.your-subdomain.workers.dev/` 접속 → 출퇴근 기록 확인
+### 웹 브라우저에서:
+- `https://slack-attendance.your-subdomain.workers.dev/` - 최근 출퇴근 기록 확인
+- `https://slack-attendance.your-subdomain.workers.dev/stats` - 주간 근태 관리 (로그인 필요)
+
+### 관리자 페이지 사용법:
+1. `/stats` 접속
+2. 설정한 비밀번호로 로그인
+3. 주간 근태 현황 테이블 확인
+   - 일~토 요일별 출근/퇴근 시간 표시
+   - 근무시간 자동 계산
+   - 이전/다음 주 탐색 가능
 
 ## 문제 해결
 

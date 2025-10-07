@@ -7,6 +7,11 @@ Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 관리 봇입니�
 - `/in` - 출근 체크
 - `/out` - 퇴근 체크
 - 웹 대시보드에서 최근 출퇴근 기록 확인
+- 🔐 **관리자 페이지** - 주 단위 근태 관리
+  - 로그인 보호
+  - 일~토 주간 근태 현황 테이블
+  - 사용자별 출근/퇴근 시간 및 근무시간 표시
+  - 이전/다음 주 탐색 기능
 
 ## 특징
 
@@ -50,15 +55,19 @@ npx wrangler d1 migrations apply DB --remote
 
 ### 4. 환경 변수 설정
 
-`wrangler.json`에서 `SLACK_SIGNING_SECRET` 설정:
+`wrangler.json`에서 다음 환경 변수를 설정:
 
 ```json
 {
   "vars": {
-    "SLACK_SIGNING_SECRET": "your_signing_secret_here"
+    "SLACK_SIGNING_SECRET": "your_signing_secret_here",
+    "ADMIN_PASSWORD": "your_admin_password_here"
   }
 }
 ```
+
+- `SLACK_SIGNING_SECRET`: Slack 앱의 Signing Secret
+- `ADMIN_PASSWORD`: 관리자 페이지 접근 비밀번호 (기본값: `admin123`)
 
 또는 Cloudflare Dashboard에서 환경 변수로 설정할 수 있습니다.
 
@@ -78,12 +87,16 @@ npm run deploy
 
 ## 사용 방법
 
-Slack 채널에서:
+### Slack 채널에서:
 - `/in` - 출근 체크
 - `/out` - 퇴근 체크
 
-웹 브라우저에서:
-- `https://your-worker.workers.dev/` - 최근 출퇴근 기록 확인
+### 웹 브라우저에서:
+- `/` - 최근 20개 출퇴근 기록 확인 (로그인 불필요)
+- `/stats` - 주간 근태 관리 페이지 (로그인 필요)
+  - 기본 비밀번호: `admin123` (환경 변수에서 변경 가능)
+  - 주 단위 출퇴근 현황 테이블
+  - 각 사용자의 일별 출근/퇴근 시간 및 근무시간 확인
 
 ## 개발
 
