@@ -101,10 +101,8 @@ export function processWeeklyStats(records: AttendanceRecord[], weekDates: strin
       const record = sortedRecords[i];
       
       if (record.type === 'in') {
-        // Extract date from timestamp (handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:MM:SS' formats)
-        const inDate = record.timestamp.includes('T') 
-          ? record.timestamp.split('T')[0] 
-          : record.timestamp.split(' ')[0];
+        // Extract date from timestamp using Korea timezone
+        const inDate = getKoreaDateString(record.timestamp);
         
         console.log(`Processing in record for ${userId} on ${inDate}, weekDates includes: ${weekDates.includes(inDate)}`);
         
@@ -149,13 +147,34 @@ export function getDayName(dateStr: string): string {
 }
 
 /**
- * Format time for display (HH:MM)
+ * Convert UTC timestamp to Korea time (UTC+9)
+ */
+export function toKoreaTime(timestamp: string): Date {
+  const utcDate = new Date(timestamp);
+  // Korea is UTC+9
+  const koreaTime = new Date(utcDate.getTime() + (9 * 60 * 60 * 1000));
+  return koreaTime;
+}
+
+/**
+ * Get date string in Korea timezone (YYYY-MM-DD)
+ */
+export function getKoreaDateString(timestamp: string): string {
+  const koreaTime = toKoreaTime(timestamp);
+  const year = koreaTime.getUTCFullYear();
+  const month = String(koreaTime.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(koreaTime.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Format time for display in Korea timezone (HH:MM)
  */
 export function formatTime(timestamp: string | null): string {
   if (!timestamp) return '-';
-  const date = new Date(timestamp);
-  const hours = date.getHours().toString().padStart(2, '0');
-  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const koreaTime = toKoreaTime(timestamp);
+  const hours = koreaTime.getUTCHours().toString().padStart(2, '0');
+  const minutes = koreaTime.getUTCMinutes().toString().padStart(2, '0');
   return `${hours}:${minutes}`;
 }
 

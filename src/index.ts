@@ -5,7 +5,8 @@ import {
   getWeekStart, 
   getWeekDates, 
   processWeeklyStats, 
-  AttendanceRecord 
+  AttendanceRecord,
+  getKoreaDateString 
 } from "./weeklyStats";
 import { renderLoginPage, renderWeeklyStatsPage } from "./renderWeeklyStats";
 
@@ -293,7 +294,8 @@ async function handleStatsPage(request: Request, env: Env): Promise<Response> {
           userStatsMap.set(log.user_id, userStats);
         }
         
-        const logDate = log.timestamp.split('T')[0];
+        // Extract date using Korea timezone
+        const logDate = getKoreaDateString(log.timestamp);
         if (userStats.days[logDate]) {
           userStats.days[logDate].workLogs.push({
             log_content: log.log_content,
