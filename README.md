@@ -6,11 +6,14 @@ Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 관리 봇입니�
 
 - `/in` - 출근 체크
 - `/out` - 퇴근 체크
+- `/log [업무 내용]` - 업무 기록 작성
 - 웹 대시보드에서 최근 출퇴근 기록 확인
 - 🔐 **관리자 페이지** - 주 단위 근태 관리
   - 로그인 보호
   - 일~토 주간 근태 현황 테이블
   - 사용자별 출근/퇴근 시간 및 근무시간 표시
+  - 📝 업무 로그 통합 표시 (각 날짜별 업무 내용)
+  - 8명 이상 팀원도 한눈에 볼 수 있는 컴팩트한 뷰
   - 이전/다음 주 탐색 기능
 
 ## 특징
@@ -45,9 +48,11 @@ npx wrangler d1 migrations apply DB --remote
 1. [Slack API](https://api.slack.com/apps)에서 새 앱 생성
 2. **Slash Commands** 설정:
    - `/in` 커맨드 생성
-     - Request URL: `https://slack-attendance.lemonaatree.workers.dev//slack/command`
+     - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
    - `/out` 커맨드 생성
-     - Request URL: `https://slack-attendance.lemonaatree.workers.dev//slack/command`
+     - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
+   - `/log` 커맨드 생성
+     - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
 3. **Basic Information**에서 `Signing Secret` 복사
 4. **OAuth & Permissions**에서 다음 스코프 추가:
    - `commands` - Slash Commands 사용
@@ -90,6 +95,9 @@ npm run deploy
 ### Slack 채널에서:
 - `/in` - 출근 체크
 - `/out` - 퇴근 체크
+- `/log [업무 내용]` - 업무 기록 작성
+  - 예: `/log 회원가입 API 개발 완료`
+  - 예: `/log 디자인 시안 검토 및 피드백 전달`
 
 ### 웹 브라우저에서:
 - `/` - 최근 20개 출퇴근 기록 확인 (로그인 불필요)
@@ -97,6 +105,7 @@ npm run deploy
   - 기본 비밀번호: `admin123` (환경 변수에서 변경 가능)
   - 주 단위 출퇴근 현황 테이블
   - 각 사용자의 일별 출근/퇴근 시간 및 근무시간 확인
+  - 각 날짜별 업무 로그 통합 표시
 
 ## 개발
 
@@ -112,6 +121,7 @@ npm run check
 
 ## 데이터베이스 스키마
 
+### Attendance (출퇴근 기록)
 ```sql
 CREATE TABLE attendance (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -119,6 +129,19 @@ CREATE TABLE attendance (
     user_name TEXT NOT NULL,
     team_id TEXT NOT NULL,
     type TEXT NOT NULL CHECK(type IN ('in', 'out')),
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Work Logs (업무 기록)
+```sql
+CREATE TABLE work_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    user_name TEXT NOT NULL,
+    team_id TEXT NOT NULL,
+    log_content TEXT NOT NULL,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

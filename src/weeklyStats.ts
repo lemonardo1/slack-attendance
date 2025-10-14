@@ -9,10 +9,16 @@ export interface AttendanceRecord {
   timestamp: string;
 }
 
+export interface WorkLog {
+  log_content: string;
+  timestamp: string;
+}
+
 export interface DayStats {
   checkIn: string | null;
   checkOut: string | null;
   workHours: number | null;
+  workLogs: WorkLog[];
 }
 
 export interface UserWeekStats {
@@ -58,49 +64,77 @@ export function calculateWorkHours(checkIn: string, checkOut: string): number {
 
 /**
  * Process attendance records into weekly statistics
+ * in 기점으로 다음 out을 매칭 (야근 처리 포함)
  */
 export function processWeeklyStats(records: AttendanceRecord[], weekDates: string[]): Map<string, UserWeekStats> {
   const userStatsMap = new Map<string, UserWeekStats>();
 
-  // Initialize user stats
+  console.log('processWeeklyStats - Input records:', records.length);
+  console.log('processWeeklyStats - Week dates:', weekDates);
+
+  // Group records by user
+  const userRecordsMap = new Map<string, AttendanceRecord[]>();
   records.forEach(record => {
-    if (!userStatsMap.has(record.user_id)) {
-      const days: { [key: string]: DayStats } = {};
-      weekDates.forEach(date => {
-        days[date] = { checkIn: null, checkOut: null, workHours: null };
-      });
-      userStatsMap.set(record.user_id, {
-        userId: record.user_id,
-        userName: record.user_name,
-        days
-      });
+    if (!userRecordsMap.has(record.user_id)) {
+      userRecordsMap.set(record.user_id, []);
     }
+    userRecordsMap.get(record.user_id)!.push(record);
   });
 
-  // Process records
-  records.forEach(record => {
-    const userStats = userStatsMap.get(record.user_id);
-    if (!userStats) return;
+  console.log('processWeeklyStats - Users found:', userRecordsMap.size);
 
-    const recordDate = record.timestamp.split('T')[0];
-    if (!userStats.days[recordDate]) return;
+  // Process each user's records
+  userRecordsMap.forEach((userRecords, userId) => {
+    // Sort records by timestamp
+    const sortedRecords = [...userRecords].sort((a, b) => 
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+    );
 
-    if (record.type === 'in') {
-      userStats.days[recordDate].checkIn = record.timestamp;
-    } else if (record.type === 'out') {
-      userStats.days[recordDate].checkOut = record.timestamp;
-    }
-  });
+    // Initialize user stats
+    const days: { [key: string]: DayStats } = {};
+    weekDates.forEach(date => {
+      days[date] = { checkIn: null, checkOut: null, workHours: null, workLogs: [] };
+    });
 
-  // Calculate work hours
-  userStatsMap.forEach(userStats => {
-    Object.keys(userStats.days).forEach(date => {
-      const day = userStats.days[date];
-      if (day.checkIn && day.checkOut) {
-        day.workHours = calculateWorkHours(day.checkIn, day.checkOut);
+    // Match in with next out (야근 처리)
+    for (let i = 0; i < sortedRecords.length; i++) {
+      const record = sortedRecords[i];
+      
+      if (record.type === 'in') {
+        // Extract date from timestamp (handle both 'YYYY-MM-DD' and 'YYYY-MM-DDTHH:MM:SS' formats)
+        const inDate = record.timestamp.includes('T') 
+          ? record.timestamp.split('T')[0] 
+          : record.timestamp.split(' ')[0];
+        
+        console.log(`Processing in record for ${userId} on ${inDate}, weekDates includes: ${weekDates.includes(inDate)}`);
+        
+        // Only process if this date is in our week range
+        if (days[inDate]) {
+          days[inDate].checkIn = record.timestamp;
+          
+          // Find next out record
+          for (let j = i + 1; j < sortedRecords.length; j++) {
+            if (sortedRecords[j].type === 'out') {
+              days[inDate].checkOut = sortedRecords[j].timestamp;
+              days[inDate].workHours = calculateWorkHours(record.timestamp, sortedRecords[j].timestamp);
+              console.log(`Matched out for ${userId} on ${inDate}, work hours: ${days[inDate].workHours}`);
+              break;
+            }
+          }
+        } else {
+          console.log(`Date ${inDate} not in week range for ${userId}`);
+        }
       }
+    }
+
+    userStatsMap.set(userId, {
+      userId,
+      userName: sortedRecords[0].user_name,
+      days
     });
   });
+
+  console.log('processWeeklyStats - Final userStatsMap size:', userStatsMap.size);
 
   return userStatsMap;
 }

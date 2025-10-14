@@ -126,7 +126,7 @@ export function renderWeeklyStatsPage(
             padding: 20px;
           }
           .container {
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
             background: white;
             border-radius: 12px;
@@ -136,27 +136,27 @@ export function renderWeeklyStatsPage(
           header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 30px;
+            padding: 20px 30px;
             display: flex;
             justify-content: space-between;
             align-items: center;
           }
           h1 {
-            font-size: 24px;
+            font-size: 22px;
           }
           .week-selector {
             display: flex;
-            gap: 10px;
+            gap: 8px;
             align-items: center;
           }
           .week-selector button {
             background: rgba(255,255,255,0.2);
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 12px;
             border-radius: 6px;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 13px;
           }
           .week-selector button:hover {
             background: rgba(255,255,255,0.3);
@@ -165,23 +165,25 @@ export function renderWeeklyStatsPage(
             background: rgba(255,255,255,0.2);
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 6px 12px;
             border-radius: 6px;
             cursor: pointer;
             text-decoration: none;
             display: inline-block;
+            font-size: 13px;
           }
           .table-container {
             overflow-x: auto;
-            padding: 20px;
+            padding: 15px;
           }
           table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 13px;
           }
           th {
             background: #f8f9fa;
-            padding: 15px 10px;
+            padding: 10px 8px;
             text-align: left;
             font-weight: 600;
             color: #495057;
@@ -190,15 +192,16 @@ export function renderWeeklyStatsPage(
             top: 0;
           }
           th.user-col {
-            min-width: 120px;
+            min-width: 90px;
             position: sticky;
             left: 0;
             background: #f8f9fa;
             z-index: 2;
           }
           td {
-            padding: 12px 10px;
-            border-bottom: 1px solid #dee2e6;
+            padding: 8px;
+            border-bottom: 1px solid #e9ecef;
+            vertical-align: top;
           }
           td.user-col {
             font-weight: 600;
@@ -207,45 +210,78 @@ export function renderWeeklyStatsPage(
             left: 0;
             background: white;
             z-index: 1;
+            font-size: 13px;
           }
           .day-cell {
-            min-width: 140px;
+            min-width: 160px;
+            max-width: 180px;
+          }
+          .time-info {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 6px;
+            font-size: 11px;
           }
           .time-in {
             color: #28a745;
-            font-size: 13px;
-            display: block;
           }
           .time-out {
             color: #dc3545;
-            font-size: 13px;
-            display: block;
           }
           .work-hours {
             color: #6c757d;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: 600;
-            margin-top: 4px;
-            display: block;
+            margin-bottom: 6px;
+          }
+          .work-logs {
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed #dee2e6;
+          }
+          .work-log-item {
+            background: #f8f9fa;
+            padding: 4px 6px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            font-size: 11px;
+            color: #495057;
+            line-height: 1.4;
+            display: flex;
+            align-items: flex-start;
+            gap: 4px;
+          }
+          .work-log-time {
+            color: #6c757d;
+            font-size: 10px;
+            flex-shrink: 0;
+          }
+          .work-log-content {
+            flex: 1;
+            word-break: break-word;
           }
           .no-data {
             color: #adb5bd;
-            font-size: 13px;
+            font-size: 12px;
           }
           .day-header {
             text-align: center;
           }
           .day-name {
-            font-size: 12px;
+            font-size: 11px;
             color: #6c757d;
             display: block;
           }
           .day-date {
-            font-size: 14px;
+            font-size: 12px;
             color: #212529;
           }
           .weekend {
-            background: #f8f9fa;
+            background: #fafbfc;
+          }
+          .log-icon {
+            color: #667eea;
+            font-weight: bold;
           }
           @media (max-width: 768px) {
             body {
@@ -256,7 +292,10 @@ export function renderWeeklyStatsPage(
             }
             header {
               flex-direction: column;
-              gap: 15px;
+              gap: 10px;
+            }
+            .day-cell {
+              min-width: 140px;
             }
           }
         </style>
@@ -266,9 +305,9 @@ export function renderWeeklyStatsPage(
           <header>
             <div>
               <h1>📊 주간 근태 현황</h1>
-              <p style="margin-top: 8px; opacity: 0.9;">주 시작: ${weekStart}</p>
+              <p style="margin-top: 6px; opacity: 0.9; font-size: 13px;">주 시작: ${weekStart}</p>
             </div>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 8px;">
               <div class="week-selector">
                 <button onclick="changeWeek(-1)">← 이전 주</button>
                 <button onclick="changeWeek(0)">이번 주</button>
@@ -307,14 +346,37 @@ export function renderWeeklyStatsPage(
                     ${weekDates.map((date, idx) => {
                       const day = user.days[date];
                       const isWeekend = idx === 0 || idx === 6;
-                      if (!day.checkIn && !day.checkOut) {
+                      
+                      const hasAttendance = day.checkIn || day.checkOut;
+                      const hasLogs = day.workLogs && day.workLogs.length > 0;
+                      
+                      if (!hasAttendance && !hasLogs) {
                         return `<td class="${isWeekend ? 'weekend' : ''}"><span class="no-data">-</span></td>`;
                       }
+                      
                       return `
                         <td class="day-cell ${isWeekend ? 'weekend' : ''}">
-                          <span class="time-in">출근: ${formatTime(day.checkIn)}</span>
-                          <span class="time-out">퇴근: ${formatTime(day.checkOut)}</span>
-                          ${day.workHours !== null ? `<span class="work-hours">${day.workHours}시간</span>` : ''}
+                          ${hasAttendance ? `
+                            <div class="time-info">
+                              <span class="time-in">🔵 ${formatTime(day.checkIn)}</span>
+                              <span class="time-out">🔴 ${formatTime(day.checkOut)}</span>
+                            </div>
+                            ${day.workHours !== null ? `<div class="work-hours">⏱️ ${day.workHours}시간</div>` : ''}
+                          ` : ''}
+                          
+                          ${hasLogs ? `
+                            <div class="work-logs">
+                              ${day.workLogs.map(log => `
+                                <div class="work-log-item">
+                                  <span class="log-icon">📝</span>
+                                  <div class="work-log-content">
+                                    ${escapeHtml(log.log_content)}
+                                    <div class="work-log-time">${formatTime(log.timestamp)}</div>
+                                  </div>
+                                </div>
+                              `).join('')}
+                            </div>
+                          ` : ''}
                         </td>
                       `;
                     }).join('')}
@@ -344,5 +406,16 @@ export function renderWeeklyStatsPage(
       </body>
     </html>
   `;
+}
+
+function escapeHtml(text: string): string {
+  const map: { [key: string]: string } = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, m => map[m]);
 }
 
