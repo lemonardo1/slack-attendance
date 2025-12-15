@@ -15,6 +15,10 @@ Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 관리 봇입니�
   - 📝 업무 로그 통합 표시 (각 날짜별 업무 내용)
   - 8명 이상 팀원도 한눈에 볼 수 있는 컴팩트한 뷰
   - 이전/다음 주 탐색 기능
+- 📊 **주간 요약 자동 발송** - Slack 채널에 주간 근무 시간 요약 자동 전송
+  - 매주 토요일 아침 9시(한국 시간) 자동 실행
+  - 팀원별 누적 근무 시간 요약
+  - 설정 방법은 [WEEKLY_SUMMARY_SETUP.md](./WEEKLY_SUMMARY_SETUP.md) 참고
 
 ## 특징
 

@@ -9,6 +9,7 @@ import {
   getKoreaDateString 
 } from "./weeklyStats";
 import { renderLoginPage, renderWeeklyStatsPage } from "./renderWeeklyStats";
+import { sendWeeklySummary } from "./sendWeeklySummary";
 
 interface SlackCommand {
   token: string;
@@ -417,5 +418,17 @@ export default {
     }
 
     return new Response('Not Found', { status: 404 });
+  },
+
+  // Scheduled event handler (Cron Trigger)
+  async scheduled(event, env, ctx) {
+    console.log('Cron trigger fired at:', new Date(event.scheduledTime).toISOString());
+    
+    try {
+      await sendWeeklySummary(env);
+      console.log('Weekly summary sent successfully');
+    } catch (error) {
+      console.error('Failed to send weekly summary:', error);
+    }
   },
 } satisfies ExportedHandler<Env>;
