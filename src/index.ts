@@ -28,6 +28,9 @@ interface SlackCommand {
 // In-memory session store (for simplicity)
 const sessions = new Set<string>();
 
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
+
 async function verifySlackRequest(request: Request, env: Env): Promise<boolean> {
   // Skip verification if SLACK_SIGNING_SECRET is not set (development mode)
   if (!env.SLACK_SIGNING_SECRET) {
@@ -44,7 +47,100 @@ function isAuthenticated(request: Request): boolean {
   return sessionToken ? sessions.has(sessionToken) : false;
 }
 
-async function handleSlackCommand(command: SlackCommand, env: Env): Promise<Response> {
+type LastAttendanceRecord = {
+  type: 'in' | 'out';
+  timestamp: string;
+  ts: number; // epoch seconds (UTC)
+  is_auto: number; // 0 or 1
+};
+
+function getNextKst4amUtcMsFromIn(inUtcMs: number): number {
+  // Represent Korea time by shifting UTC by +9h and using UTC getters/setters.
+  const inKst = new Date(inUtcMs + KST_OFFSET_MS);
+  const cutoffKst = new Date(inKst.getTime());
+  cutoffKst.setUTCHours(4, 0, 0, 0);
+  if (inKst.getUTCHours() >= 4) {
+    cutoffKst.setUTCDate(cutoffKst.getUTCDate() + 1);
+  }
+  // Convert the KST-represented timestamp back to real UTC ms.
+  return cutoffKst.getTime() - KST_OFFSET_MS;
+}
+
+async function getLastAttendanceRecord(env: Env, userId: string, teamId: string): Promise<LastAttendanceRecord | null> {
+  const stmt = env.DB.prepare(`
+    SELECT 
+      type,
+      timestamp,
+      CAST(strftime('%s', timestamp) AS INTEGER) AS ts,
+      COALESCE(is_auto, 0) AS is_auto
+    FROM attendance
+    WHERE user_id = ? AND team_id = ?
+    ORDER BY timestamp DESC
+    LIMIT 1
+  `);
+  const { results } = await stmt.bind(userId, teamId).all();
+  if (!results || results.length === 0) return null;
+  return results[0] as unknown as LastAttendanceRecord;
+}
+
+async function findMatchingInForOut(env: Env, userId: string, teamId: string, outTimestamp: string): Promise<{ timestamp: string; ts: number } | null> {
+  const stmt = env.DB.prepare(`
+    SELECT 
+      timestamp,
+      CAST(strftime('%s', timestamp) AS INTEGER) AS ts
+    FROM attendance
+    WHERE user_id = ? AND team_id = ? AND type = 'in' AND timestamp < ?
+    ORDER BY timestamp DESC
+    LIMIT 1
+  `);
+  const { results } = await stmt.bind(userId, teamId, outTimestamp).all();
+  if (!results || results.length === 0) return null;
+  return results[0] as unknown as { timestamp: string; ts: number };
+}
+
+async function insertAutoOut(env: Env, userId: string, userName: string, teamId: string, outUtcEpochSec: number): Promise<void> {
+  await env.DB.prepare(`
+    INSERT INTO attendance (user_id, user_name, team_id, type, timestamp, is_auto)
+    VALUES (?, ?, ?, 'out', datetime(?, 'unixepoch'), 1)
+  `)
+    .bind(userId, userName, teamId, outUtcEpochSec)
+    .run();
+}
+
+async function maybeAutoCloseOpenInForUser(command: SlackCommand, env: Env, nowUtcMs: number): Promise<boolean> {
+  const last = await getLastAttendanceRecord(env, command.user_id, command.team_id);
+  if (!last || last.type !== 'in') return false;
+
+  const inUtcMs = last.ts * 1000;
+  const cutoffUtcMs = getNextKst4amUtcMsFromIn(inUtcMs);
+
+  if (nowUtcMs < cutoffUtcMs) return false;
+
+  const autoOutUtcMs = inUtcMs + AUTO_OUT_AFTER_HOURS_MS;
+  await insertAutoOut(env, command.user_id, command.user_name, command.team_id, Math.floor(autoOutUtcMs / 1000));
+  return true;
+}
+
+async function sendEphemeralToResponseUrl(ctx: ExecutionContext, responseUrl: string, text: string): Promise<void> {
+  ctx.waitUntil(
+    fetch(responseUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        response_type: 'ephemeral',
+        text,
+      }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        console.warn('Failed to send ephemeral response_url message:', res.status, await res.text());
+      }
+    }).catch((err) => {
+      console.warn('Failed to send ephemeral response_url message:', err);
+    })
+  );
+}
+
+async function handleSlackCommand(command: SlackCommand, env: Env, ctx: ExecutionContext): Promise<Response> {
   const { user_id, user_name, team_id, command: cmd, text } = command;
 
   // Handle /log command
@@ -68,22 +164,32 @@ async function handleSlackCommand(command: SlackCommand, env: Env): Promise<Resp
   }
 
   try {
-    // Check last record to prevent duplicates
-    const lastRecordStmt = env.DB.prepare(`
-      SELECT type, timestamp
-      FROM attendance 
-      WHERE user_id = ? AND team_id = ?
-      ORDER BY timestamp DESC 
-      LIMIT 1
-    `);
-    
-    const { results: lastRecords } = await lastRecordStmt
-      .bind(user_id, team_id)
-      .all();
+    const nowUtcMs = Date.now();
 
-    if (lastRecords && lastRecords.length > 0) {
-      const lastRecord = lastRecords[0] as { type: string; timestamp: string };
-      
+    // If user is checking in, first auto-close a stale open "in" (no /out until KST 4AM).
+    if (type === 'in') {
+      await maybeAutoCloseOpenInForUser(command, env, nowUtcMs);
+    }
+
+    // Re-fetch last record (it may have changed due to auto-out insertion).
+    const lastRecord = await getLastAttendanceRecord(env, user_id, team_id);
+
+    // If last record is an auto-out, notify user on their next /in.
+    if (type === 'in' && lastRecord && lastRecord.type === 'out' && lastRecord.is_auto === 1) {
+      const matchedIn = await findMatchingInForOut(env, user_id, team_id, lastRecord.timestamp);
+      const inTimeKst = matchedIn
+        ? new Date(matchedIn.ts * 1000).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })
+        : '(알 수 없음)';
+      const outTimeKst = new Date(lastRecord.ts * 1000).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+
+      await sendEphemeralToResponseUrl(
+        ctx,
+        command.response_url,
+        `⚠️ 새벽 4시까지 \`/out\` 로그가 없어 이전 출근이 자동 퇴근 처리되었습니다.\n- 출근: ${inTimeKst}\n- 자동 퇴근(출근+4시간): ${outTimeKst}`
+      );
+    }
+
+    if (lastRecord) {
       // Check for duplicate in after in
       if (type === 'in' && lastRecord.type === 'in') {
         const lastTime = new Date(lastRecord.timestamp).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
@@ -365,7 +471,7 @@ async function handleLogout(request: Request): Promise<Response> {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
     // Health check endpoint
@@ -414,7 +520,7 @@ export default {
         trigger_id: formData.get('trigger_id') as string,
       };
 
-      return handleSlackCommand(slackCommand, env);
+      return handleSlackCommand(slackCommand, env, ctx);
     }
 
     return new Response('Not Found', { status: 404 });
@@ -425,10 +531,60 @@ export default {
     console.log('Cron trigger fired at:', new Date(event.scheduledTime).toISOString());
     
     try {
-      await sendWeeklySummary(env);
-      console.log('Weekly summary sent successfully');
+      // Cron expressions are in UTC (per wrangler.json).
+      if (event.cron === '0 0 * * 6') {
+        await sendWeeklySummary(env);
+        console.log('Weekly summary sent successfully');
+        return;
+      }
+
+      // Daily 19:00 UTC == daily 04:00 KST: auto-close stale open "in" entries.
+      if (event.cron === '0 19 * * *') {
+        const nowUtcMs = event.scheduledTime;
+
+        const openInsStmt = env.DB.prepare(`
+          SELECT
+            user_id,
+            user_name,
+            team_id,
+            timestamp,
+            CAST(strftime('%s', timestamp) AS INTEGER) AS ts
+          FROM attendance a
+          WHERE a.type = 'in'
+            AND a.timestamp = (
+              SELECT MAX(timestamp)
+              FROM attendance
+              WHERE user_id = a.user_id AND team_id = a.team_id
+            )
+        `);
+
+        const { results } = await openInsStmt.all();
+        const openIns = (results || []) as unknown as Array<{
+          user_id: string;
+          user_name: string;
+          team_id: string;
+          timestamp: string;
+          ts: number;
+        }>;
+
+        let closedCount = 0;
+        for (const row of openIns) {
+          const inUtcMs = row.ts * 1000;
+          const cutoffUtcMs = getNextKst4amUtcMsFromIn(inUtcMs);
+          if (nowUtcMs < cutoffUtcMs) continue;
+
+          const autoOutUtcMs = inUtcMs + AUTO_OUT_AFTER_HOURS_MS;
+          await insertAutoOut(env, row.user_id, row.user_name, row.team_id, Math.floor(autoOutUtcMs / 1000));
+          closedCount++;
+        }
+
+        console.log(`Auto-closed ${closedCount} stale open attendance sessions`);
+        return;
+      }
+
+      console.log('Unknown cron schedule, ignoring:', event.cron);
     } catch (error) {
-      console.error('Failed to send weekly summary:', error);
+      console.error('Scheduled handler error:', error);
     }
   },
 } satisfies ExportedHandler<Env>;

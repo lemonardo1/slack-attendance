@@ -133,6 +133,7 @@ CREATE TABLE attendance (
     user_name TEXT NOT NULL,
     team_id TEXT NOT NULL,
     type TEXT NOT NULL CHECK(type IN ('in', 'out')),
+    is_auto INTEGER NOT NULL DEFAULT 0,
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

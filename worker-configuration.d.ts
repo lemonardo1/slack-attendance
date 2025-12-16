@@ -6,6 +6,7 @@ declare namespace Cloudflare {
 		SLACK_SIGNING_SECRET: "93d449c5f8c2701d631bce42697b9b3e";
 		ADMIN_PASSWORD: "admin1234@!";
 		SLACK_WEBHOOK_URL: "YOUR_WEBHOOK_URL_HERE";
+		WORKER_URL?: string;
 		DB: D1Database;
 	}
 }
