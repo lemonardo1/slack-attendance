@@ -2,6 +2,7 @@
   "name": "slack-attendance",
   "version": "1.0.0",
   "description": "Slack attendance tracking bot using Cloudflare Workers and D1 Database",
+  "author": "Daeseong Kim",
   "license": "MIT",
   "private": true,
   "cloudflare": {
