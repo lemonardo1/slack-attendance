@@ -3,9 +3,9 @@
 // Runtime types generated with workerd@1.20250617.0 2025-04-01 
 declare namespace Cloudflare {
 	interface Env {
-		SLACK_SIGNING_SECRET: "93d449c5f8c2701d631bce42697b9b3e";
-		ADMIN_PASSWORD: "admin1234@!";
-		SLACK_WEBHOOK_URL: "YOUR_WEBHOOK_URL_HERE";
+		SLACK_SIGNING_SECRET: string;
+		ADMIN_PASSWORD: string;
+		SLACK_WEBHOOK_URL: string;
 		WORKER_URL?: string;
 		DB: D1Database;
 	}

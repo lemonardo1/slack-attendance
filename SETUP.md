@@ -15,7 +15,7 @@
 2. "Create New Command" 클릭
 3. 다음 정보 입력:
    - Command: `/in`
-   - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
+   - Request URL: `https://your-worker.workers.dev/slack/command`
    - Short Description: `출근 체크`
    - Usage Hint: (비워둬도 됨)
 4. "Save" 클릭
@@ -24,7 +24,7 @@
 1. "Create New Command" 다시 클릭
 2. 다음 정보 입력:
    - Command: `/out`
-   - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
+   - Request URL: `https://your-worker.workers.dev/slack/command`
    - Short Description: `퇴근 체크`
    - Usage Hint: (비워둬도 됨)
 3. "Save" 클릭
@@ -78,7 +78,7 @@ npm run predeploy
 npm run deploy
 ```
 
-배포가 완료되면 Worker URL이 출력됩니다. (예: `https://slack-attendance.your-subdomain.workers.dev`)
+배포가 완료되면 Worker URL이 출력됩니다. (예: `https://your-worker.workers.dev`)
 
 ## 7. Slack 앱의 Request URL 업데이트
 
@@ -86,7 +86,7 @@ npm run deploy
 1. Slack 앱 설정 페이지로 돌아가기
 2. "Slash Commands" 메뉴 클릭
 3. `/in` 커맨드의 "Edit" 클릭
-4. Request URL을 실제 Worker URL로 업데이트: `https://slack-attendance.your-subdomain.workers.dev/slack/command`
+4. Request URL을 실제 Worker URL로 업데이트: `https://your-worker.workers.dev/slack/command`
 5. "Save" 클릭
 6. `/out` 커맨드도 동일하게 업데이트
 
@@ -97,8 +97,8 @@ npm run deploy
 - `/out` 입력 → 퇴근 체크 확인
 
 ### 웹 브라우저에서:
-- `https://slack-attendance.your-subdomain.workers.dev/` - 최근 출퇴근 기록 확인
-- `https://slack-attendance.your-subdomain.workers.dev/stats` - 주간 근태 관리 (로그인 필요)
+- `https://your-worker.workers.dev/` - 최근 출퇴근 기록 확인
+- `https://your-worker.workers.dev/stats` - 주간 근태 관리 (로그인 필요)
 
 ### 관리자 페이지 사용법:
 1. `/stats` 접속

@@ -131,8 +131,8 @@ wrangler tail
 ```json
 {
   "vars": {
-    "SLACK_SIGNING_SECRET": "93d449c5f8c2701d631bce42697b9b3e",
-    "ADMIN_PASSWORD": "admin1234@!"
+    "SLACK_SIGNING_SECRET": "your-slack-signing-secret",
+    "ADMIN_PASSWORD": "your-admin-password"
     // SLACK_WEBHOOK_URL은 Dashboard에서 설정
   }
 }
