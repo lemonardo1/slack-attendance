@@ -1,0 +1,25 @@
+{
+  "compatibility_date": "2025-04-01",
+  "main": "src/index.ts",
+  "name": "slack-attendance",
+  "upload_source_maps": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_id": "your-database-id-here",
+      "database_name": "your-database-name"
+    }
+  ],
+  "vars": {
+    "SLACK_SIGNING_SECRET": "your-slack-signing-secret",
+    "ADMIN_PASSWORD": "your-admin-password",
+    "SLACK_WEBHOOK_URL": "your-slack-webhook-url",
+    "WORKER_URL": "https://your-worker.workers.dev"
+  },
+  "triggers": {
+    "crons": ["0 0 * * 6", "0 19 * * *"]
+  },
+  "observability": {
+    "enabled": true
+  }
+}

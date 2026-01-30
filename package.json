@@ -1,6 +1,8 @@
 {
   "name": "slack-attendance",
-  "description": "Cloudflare's native serverless SQL database.",
+  "version": "1.0.0",
+  "description": "Slack attendance tracking bot using Cloudflare Workers and D1 Database",
+  "license": "MIT",
   "private": true,
   "cloudflare": {
     "label": "Worker + D1 Database",

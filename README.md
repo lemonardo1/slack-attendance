@@ -52,11 +52,11 @@ npx wrangler d1 migrations apply DB --remote
 1. [Slack API](https://api.slack.com/apps)에서 새 앱 생성
 2. **Slash Commands** 설정:
    - `/in` 커맨드 생성
-     - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
+     - Request URL: `https://your-worker.workers.dev/slack/command`
    - `/out` 커맨드 생성
-     - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
+     - Request URL: `https://your-worker.workers.dev/slack/command`
    - `/log` 커맨드 생성
-     - Request URL: `https://slack-attendance.lemonaatree.workers.dev/slack/command`
+     - Request URL: `https://your-worker.workers.dev/slack/command`
 3. **Basic Information**에서 `Signing Secret` 복사
 4. **OAuth & Permissions**에서 다음 스코프 추가:
    - `commands` - Slash Commands 사용
@@ -64,19 +64,20 @@ npx wrangler d1 migrations apply DB --remote
 
 ### 4. 환경 변수 설정
 
-`wrangler.json`에서 다음 환경 변수를 설정:
+`wrangler.json.example`을 복사하여 `wrangler.json`을 생성하고 환경 변수를 설정:
 
-```json
-{
-  "vars": {
-    "SLACK_SIGNING_SECRET": "your_signing_secret_here",
-    "ADMIN_PASSWORD": "your_admin_password_here"
-  }
-}
+```bash
+cp wrangler.json.example wrangler.json
 ```
 
+`wrangler.json`에서 다음 값들을 실제 값으로 변경:
+
+- `database_id`: Cloudflare D1 데이터베이스 ID
+- `database_name`: 데이터베이스 이름
 - `SLACK_SIGNING_SECRET`: Slack 앱의 Signing Secret
-- `ADMIN_PASSWORD`: 관리자 페이지 접근 비밀번호 (기본값: `admin123`)
+- `ADMIN_PASSWORD`: 관리자 페이지 접근 비밀번호
+- `SLACK_WEBHOOK_URL`: Slack Incoming Webhook URL (주간 요약 발송용)
+- `WORKER_URL`: 배포된 Worker URL
 
 또는 Cloudflare Dashboard에서 환경 변수로 설정할 수 있습니다.
 
@@ -122,6 +123,10 @@ npm run dev
 ```bash
 npm run check
 ```
+
+## 라이센스
+
+MIT License - 자세한 내용은 [LICENSE](./LICENSE) 파일을 참고하세요.
 
 ## 데이터베이스 스키마
 
