@@ -1,116 +1,109 @@
-# Slack 출퇴근 체크 봇
+# Slack 출퇴근 & 업무 관리 봇
 
-Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 관리 봇입니다.
+Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 및 업무 티켓 관리 시스템입니다.
 
-## 기능
+## ✨ 주요 기능
 
+### 📥 출퇴근 관리
 - `/in` - 출근 체크
 - `/out` - 퇴근 체크
-- `/log [업무 내용]` - 업무 기록 작성
-- 웹 대시보드에서 최근 출퇴근 기록 확인
-- 🔐 **관리자 페이지** - 주 단위 근태 관리
+- 주간 근태 현황 대시보드
+- 자동 주간 요약 리포트
+
+### 📋 업무 티켓 관리
+- `/log [티켓제목] [@담당자]` - 업무 티켓 생성
+- `/start [티켓-이름]` - 업무 시작
+- `/end [티켓-이름]` - 업무 완료
+- `/assign [티켓-이름] @담당자` - 담당자 할당
+
+### 🎨 Notion 스타일 웹 대시보드
+- **인터랙티브 티켓 보드**: https://slack-attendance.lemonaatree.workers.dev/
+  - 업무명 클릭하여 수정
+  - 상태 드롭다운 (대기/진행/완료)
+  - 담당자/작성자 검색 및 선택
+  - 캘린더로 시작일/마감일 설정
+  - 상태 변경 시 자동 날짜 설정
+  - 실시간 업데이트
+
+- **주간 통계**: https://slack-attendance.lemonaatree.workers.dev/stats
   - 로그인 보호
-  - 일~토 주간 근태 현황 테이블
-  - 사용자별 출근/퇴근 시간 및 근무시간 표시
-  - 📝 업무 로그 통합 표시 (각 날짜별 업무 내용)
-  - 8명 이상 팀원도 한눈에 볼 수 있는 컴팩트한 뷰
-  - 이전/다음 주 탐색 기능
-- 📊 **주간 요약 자동 발송** - Slack 채널에 주간 근무 시간 요약 자동 전송
-  - 매주 토요일 아침 9시(한국 시간) 자동 실행
-  - 팀원별 누적 근무 시간 요약
-  - 설정 방법은 [WEEKLY_SUMMARY_SETUP.md](./WEEKLY_SUMMARY_SETUP.md) 참고
+  - 팀원별 출근/퇴근 시간
+  - 근무시간 자동 계산
+  - 이전/다음 주 탐색
 
-## 특징
+### 🔔 자동 알림
+- 매주 토요일 00:00 - 주간 요약
+- 매일 19:00 - 일일 리마인더
 
-- 서버리스 아키텍처 (Cloudflare Workers)
-- D1 데이터베이스로 출퇴근 기록 저장
-- Slack 서명 검증을 통한 보안
-- 실시간 출퇴근 알림
+## 🚀 빠른 시작
 
-## 설치 방법
-
-### 1. 프로젝트 의존성 설치
+### 1. 프로젝트 클론 및 설치
 
 ```bash
+git clone <repository-url>
+cd slack-attendance
 npm install
 ```
 
-### 2. D1 데이터베이스 마이그레이션
+### 2. Slack 앱 설정
 
-로컬 개발:
-```bash
-npm run seedLocalD1
-```
+**📖 자세한 설정 가이드**: [SLACK_SETUP_GUIDE.md](./SLACK_SETUP_GUIDE.md)
 
-프로덕션 배포:
-```bash
-npx wrangler d1 migrations apply DB --remote
-```
+간단 요약:
+1. [Slack API](https://api.slack.com/apps)에서 앱 생성
+2. Signing Secret, Bot Token, Webhook URL 복사
+3. `wrangler.json`에 환경 변수 설정
+4. Slash Commands 등록
 
-### 3. Slack 앱 설정
-
-1. [Slack API](https://api.slack.com/apps)에서 새 앱 생성
-2. **Slash Commands** 설정:
-   - `/in` 커맨드 생성
-     - Request URL: `https://your-worker.workers.dev/slack/command`
-   - `/out` 커맨드 생성
-     - Request URL: `https://your-worker.workers.dev/slack/command`
-   - `/log` 커맨드 생성
-     - Request URL: `https://your-worker.workers.dev/slack/command`
-3. **Basic Information**에서 `Signing Secret` 복사
-4. **OAuth & Permissions**에서 다음 스코프 추가:
-   - `commands` - Slash Commands 사용
-   - `chat:write` - 메시지 전송
-
-### 4. 환경 변수 설정
-
-`wrangler.json.example`을 복사하여 `wrangler.json`을 생성하고 환경 변수를 설정:
-
-```bash
-cp wrangler.json.example wrangler.json
-```
-
-`wrangler.json`에서 다음 값들을 실제 값으로 변경:
-
-- `database_id`: Cloudflare D1 데이터베이스 ID
-- `database_name`: 데이터베이스 이름
-- `SLACK_SIGNING_SECRET`: Slack 앱의 Signing Secret
-- `ADMIN_PASSWORD`: 관리자 페이지 접근 비밀번호
-- `SLACK_WEBHOOK_URL`: Slack Incoming Webhook URL (주간 요약 발송용)
-- `WORKER_URL`: 배포된 Worker URL
-
-또는 Cloudflare Dashboard에서 환경 변수로 설정할 수 있습니다.
-
-### 5. 배포
+### 3. 배포
 
 ```bash
 npm run deploy
 ```
 
-배포 후 Slack 앱의 Request URL을 업데이트하세요:
-- `https://your-worker.workers.dev/slack/command`
+배포 완료 후 출력되는 URL을 확인하세요.
 
-### 6. Slack 워크스페이스에 앱 설치
+## 📖 사용 방법
 
-1. Slack 앱 설정 페이지에서 **Install App** 클릭
-2. 워크스페이스에 권한 부여
+### Slack 명령어
 
-## 사용 방법
+#### 출퇴근 관리
+```
+/in          # 출근 체크
+/out         # 퇴근 체크
+```
 
-### Slack 채널에서:
-- `/in` - 출근 체크
-- `/out` - 퇴근 체크
-- `/log [업무 내용]` - 업무 기록 작성
-  - 예: `/log 회원가입 API 개발 완료`
-  - 예: `/log 디자인 시안 검토 및 피드백 전달`
+#### 업무 티켓 관리
+```
+/log 회원가입 API 개발 @홍길동          # 티켓 생성 및 담당자 지정
+/log 디자인 시안 검토                   # 티켓 생성 (담당자 미지정)
+/start 회원가입-API-개발                # 티켓 시작
+/end 회원가입-API-개발                  # 티켓 완료
+/assign 회원가입-API-개발 @김철수       # 담당자 변경
+```
 
-### 웹 브라우저에서:
-- `/` - 최근 20개 출퇴근 기록 확인 (로그인 불필요)
-- `/stats` - 주간 근태 관리 페이지 (로그인 필요)
-  - 기본 비밀번호: `admin123` (환경 변수에서 변경 가능)
-  - 주 단위 출퇴근 현황 테이블
-  - 각 사용자의 일별 출근/퇴근 시간 및 근무시간 확인
-  - 각 날짜별 업무 로그 통합 표시
+### 웹 대시보드
+
+#### 티켓 보드
+**URL**: https://slack-attendance.lemonaatree.workers.dev/
+
+기능:
+- ✅ 새 티켓 생성
+- ✏️ 업무명 클릭하여 수정
+- 🔄 상태 드롭다운 (대기/진행/완료)
+- 👤 담당자/작성자 검색 및 선택
+- 📅 시작일/마감일 캘린더 선택
+- ⚡ 상태 변경 시 자동 날짜 설정
+
+#### 주간 통계
+**URL**: https://slack-attendance.lemonaatree.workers.dev/stats
+
+기능:
+- 🔐 로그인 보호 (환경 변수에서 비밀번호 설정)
+- 📊 주 단위 출퇴근 현황
+- ⏱️ 근무시간 자동 계산
+- 📝 일별 업무 로그 표시
+- ◀️▶️ 이전/다음 주 탐색
 
 ## 개발
 
@@ -128,7 +121,7 @@ npm run check
 
 MIT License - 자세한 내용은 [LICENSE](./LICENSE) 파일을 참고하세요.
 
-## 데이터베이스 스키마
+## 🗄️ 데이터베이스 스키마
 
 ### Attendance (출퇴근 기록)
 ```sql
@@ -144,15 +137,48 @@ CREATE TABLE attendance (
 );
 ```
 
-### Work Logs (업무 기록)
+### Work Tickets (업무 티켓)
 ```sql
-CREATE TABLE work_logs (
+CREATE TABLE work_tickets (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT NOT NULL,
     user_name TEXT NOT NULL,
     team_id TEXT NOT NULL,
-    log_content TEXT NOT NULL,
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    ticket_title TEXT NOT NULL,
+    ticket_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    assignee_id TEXT,
+    assignee_name TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    started_at DATETIME,
+    completed_at DATETIME
 );
 ```
+
+### Users (사용자)
+```sql
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL UNIQUE,
+    user_name TEXT NOT NULL,
+    display_name TEXT,
+    email TEXT,
+    team_id TEXT NOT NULL,
+    role TEXT DEFAULT 'member',
+    is_active INTEGER DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+## 🛠️ 기술 스택
+
+- **Backend**: Cloudflare Workers (서버리스)
+- **Database**: Cloudflare D1 (SQLite)
+- **Frontend**: Vanilla JavaScript + HTML/CSS
+- **Language**: TypeScript
+- **Integration**: Slack API
+
+## 📝 라이센스
+
+MIT License - 자세한 내용은 [LICENSE](./LICENSE) 파일을 참고하세요.

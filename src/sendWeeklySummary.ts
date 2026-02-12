@@ -2,10 +2,10 @@
  * Send weekly summary to Slack channel
  */
 
-import { 
-  getWeekStart, 
-  getWeekDates, 
-  processWeeklyStats, 
+import {
+  getWeekStart,
+  getWeekDates,
+  processWeeklyStats,
   AttendanceRecord,
   UserWeekStats
 } from "./weeklyStats";
@@ -41,7 +41,7 @@ export async function sendWeeklySummary(env: Env): Promise<void> {
     const today = new Date();
     const lastWeek = new Date(today);
     lastWeek.setDate(today.getDate() - 7);
-    
+
     const weekStart = getWeekStart(lastWeek);
     const weekDates = getWeekDates(weekStart);
 
@@ -58,7 +58,7 @@ export async function sendWeeklySummary(env: Env): Promise<void> {
       WHERE date(timestamp) >= ? AND date(timestamp) < ?
       ORDER BY timestamp ASC
     `);
-    
+
     const { results } = await stmt
       .bind(weekStartStr, weekEndStr)
       .all();
@@ -93,13 +93,14 @@ export async function sendWeeklySummary(env: Env): Promise<void> {
     message += `\n🔗 자세한 내용: ${env.WORKER_URL || 'https://your-worker.workers.dev'}/stats`;
 
     // Send to Slack
-    if (!env.SLACK_WEBHOOK_URL || env.SLACK_WEBHOOK_URL === 'YOUR_WEBHOOK_URL_HERE') {
+    const webhookUrl = env.SLACK_WEBHOOK_URL as string;
+    if (!webhookUrl || webhookUrl === 'your-slack-webhook-url') {
       console.warn('SLACK_WEBHOOK_URL not configured, skipping Slack notification');
       console.log('Would have sent message:', message);
       return;
     }
 
-    const response = await fetch(env.SLACK_WEBHOOK_URL, {
+    const response = await fetch(webhookUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

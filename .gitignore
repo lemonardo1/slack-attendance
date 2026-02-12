@@ -179,6 +179,7 @@ dist
 .wrangler/
 build/
 wrangler.json
+worker-configuration.d.ts
 
 # Turbo output
 .turbo/
