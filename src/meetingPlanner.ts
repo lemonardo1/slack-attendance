@@ -12,45 +12,56 @@ export function renderMeetingHomePage(): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>회의 시간 조율</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg: #f3f5f8;
-        --panel: #ffffff;
-        --text: #1a1f2b;
-        --sub: #6d7380;
-        --line: #dbe1ea;
-        --accent: #0d9488;
-        --accent-2: #0f766e;
+        --bg: #000000;
+        --panel: #111111;
+        --text: #ffffff;
+        --sub: #666666;
+        --line: #222222;
+        --accent: #ffffff;
+        --accent-2: #dddddd;
       }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: radial-gradient(circle at top left, #e8f8f5 0%, var(--bg) 45%);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
         color: var(--text);
-        padding: 24px;
+        min-height: 100vh;
+        padding: 40px;
       }
-      .wrap { max-width: 1100px; margin: 0 auto; }
-      .header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 18px; }
-      h1 { font-size: 28px; letter-spacing: -0.02em; }
+      .wrap { max-width: 1400px; margin: 0 auto; }
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid var(--accent);
+      }
+      h1 { font-size: 28px; letter-spacing: -0.02em; text-transform: uppercase; }
       .sub { color: var(--sub); font-size: 13px; margin-top: 4px; }
-      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--line); border: 2px solid var(--line); }
       .card {
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 14px;
+        padding: 18px;
       }
-      .card h2 { font-size: 15px; margin-bottom: 12px; }
+      .card h2 { font-size: 14px; margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
       .row { display: grid; gap: 8px; margin-bottom: 10px; }
-      label { font-size: 12px; color: var(--sub); font-weight: 600; }
+      label { font-size: 11px; color: var(--sub); font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
       input, select, button {
         width: 100%;
         border: 1px solid var(--line);
-        border-radius: 8px;
+        color: var(--text);
         font-size: 14px;
         padding: 9px 10px;
-        background: #fff;
+        background: #0b0b0b;
       }
+      input::placeholder { color: var(--sub); }
       .window-row {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr auto;
@@ -60,19 +71,22 @@ export function renderMeetingHomePage(): string {
       .inline-actions { display: flex; gap: 8px; }
       .btn {
         cursor: pointer;
-        font-weight: 600;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
       }
       .btn-primary {
         border-color: var(--accent);
         background: var(--accent);
-        color: #fff;
+        color: var(--bg);
       }
       .btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
-      .btn-ghost { background: #f8fafc; }
+      .btn-ghost { background: #0b0b0b; color: var(--sub); }
+      .btn-ghost:hover { color: var(--text); border-color: var(--accent); }
       .meeting-list { display: grid; gap: 8px; }
       .meeting-item {
+        background: #0b0b0b;
         border: 1px solid var(--line);
-        border-radius: 8px;
         padding: 10px;
         text-decoration: none;
         color: inherit;
@@ -81,12 +95,16 @@ export function renderMeetingHomePage(): string {
       .meeting-item:hover { border-color: var(--accent); }
       .meeting-meta { color: var(--sub); font-size: 12px; margin-top: 4px; }
       @media (max-width: 900px) {
+        body { padding: 20px; }
         .grid { grid-template-columns: 1fr; }
       }
     </style>
   </head>
   <body>
     <div class="wrap">
+      <div style="margin-bottom: 12px;">
+        <a href="/" style="text-decoration: none; color: var(--sub); font-size: 13px;">← 티켓 보드로</a>
+      </div>
       <div class="header">
         <div>
           <h1>회의 시간 조율</h1>
@@ -266,37 +284,40 @@ export function renderMeetingDetailPage(meetingId: number): string {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>회의 시간 조율</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
       :root {
-        --bg: #f3f5f8;
-        --panel: #ffffff;
-        --text: #1a1f2b;
-        --sub: #6d7380;
-        --line: #dbe1ea;
-        --accent: #0d9488;
+        --bg: #000000;
+        --panel: #111111;
+        --text: #ffffff;
+        --sub: #666666;
+        --line: #222222;
+        --accent: #ffffff;
       }
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        background: radial-gradient(circle at top left, #e8f8f5 0%, var(--bg) 45%);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
         color: var(--text);
-        padding: 16px;
+        min-height: 100vh;
+        padding: 12px;
       }
-      .wrap { max-width: 1200px; margin: 0 auto; }
+      .wrap { max-width: 1400px; margin: 0 auto; }
       .top {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 12px;
+        margin-bottom: 16px;
       }
-      h1 { font-size: 22px; }
+      h1 { font-size: 22px; text-transform: uppercase; letter-spacing: 0.04em; }
       .meta { color: var(--sub); font-size: 13px; margin-top: 4px; }
       .card {
         background: var(--panel);
         border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 12px;
-        margin-bottom: 10px;
+        padding: 8px;
+        margin-bottom: 8px;
       }
       .controls {
         display: grid;
@@ -305,36 +326,40 @@ export function renderMeetingDetailPage(meetingId: number): string {
       }
       input, button, a {
         border: 1px solid var(--line);
-        border-radius: 8px;
-        padding: 9px 10px;
-        font-size: 14px;
+        padding: 7px 8px;
+        font-size: 13px;
+        background: #0b0b0b;
+        color: var(--text);
       }
-      button { cursor: pointer; font-weight: 600; background: var(--accent); color: #fff; border-color: var(--accent); }
-      a { text-decoration: none; color: inherit; background: #fff; }
-      .legend { display: flex; gap: 12px; font-size: 12px; color: var(--sub); flex-wrap: wrap; }
-      .grid-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
-      table { border-collapse: collapse; min-width: 860px; width: 100%; }
-      th, td { border: 1px solid var(--line); text-align: center; padding: 6px; }
-      thead th { position: sticky; top: 0; background: #f9fbfc; z-index: 1; font-size: 12px; }
-      .time-col { width: 70px; font-size: 12px; color: var(--sub); background: #f9fbfc; }
+      input::placeholder { color: var(--sub); }
+      button { cursor: pointer; font-weight: 700; background: var(--accent); color: var(--bg); border-color: var(--accent); text-transform: uppercase; letter-spacing: 0.04em; }
+      button:hover { background: #dddddd; border-color: #dddddd; }
+      a { text-decoration: none; color: inherit; background: #0b0b0b; }
+      .legend { display: flex; gap: 10px; font-size: 11px; color: var(--sub); flex-wrap: wrap; }
+      .grid-wrap { overflow: auto; border: 1px solid var(--line); }
+      table { border-collapse: collapse; min-width: 780px; width: 100%; }
+      th, td { border: 1px solid var(--line); text-align: center; padding: 4px; }
+      thead th { position: sticky; top: 0; background: #0b0b0b; z-index: 1; font-size: 11px; }
+      .time-col { width: 62px; font-size: 11px; color: var(--sub); background: #0b0b0b; }
       td.slot {
         cursor: pointer;
-        font-size: 12px;
-        height: 28px;
-        min-width: 92px;
+        font-size: 11px;
+        height: 22px;
+        min-width: 72px;
         transition: transform 0.06s ease;
+        user-select: none;
       }
       td.slot:hover { transform: scale(1.01); }
-      td.slot.invalid { background: #f3f5f8; cursor: default; }
-      td.slot.mine { outline: 2px solid #0f766e; outline-offset: -2px; }
-      .best-list { display: grid; gap: 6px; margin-top: 8px; }
+      td.slot.invalid { background: #070707; cursor: default; }
+      td.slot.mine { outline: 2px solid #ffffff; outline-offset: -2px; }
+      .best-list { display: grid; gap: 5px; margin-top: 6px; }
       .best-item {
         border: 1px solid var(--line);
-        border-radius: 6px;
-        padding: 8px;
-        font-size: 13px;
+        background: #0b0b0b;
+        padding: 6px;
+        font-size: 12px;
       }
-      .participants { color: var(--sub); font-size: 13px; margin-top: 6px; }
+      .participants { color: var(--sub); font-size: 12px; margin-top: 6px; }
       @media (max-width: 760px) {
         .controls { grid-template-columns: 1fr; }
       }
@@ -343,7 +368,10 @@ export function renderMeetingDetailPage(meetingId: number): string {
   <body>
     <div class="wrap">
       <div class="top">
-        <a href="/meetings">← 회의 목록</a>
+        <div style="display: flex; gap: 8px;">
+          <a href="/meetings">← 회의 목록</a>
+          <a href="/">티켓 보드로</a>
+        </div>
       </div>
 
       <section class="card">
@@ -387,6 +415,8 @@ export function renderMeetingDetailPage(meetingId: number): string {
 
       let latestData = null;
       let selectedSlots = new Set();
+      let isDragging = false;
+      let dragShouldSelect = true;
 
       function slotKey(day, hour) {
         return String(day) + '-' + String(hour).padStart(2, '0');
@@ -395,6 +425,16 @@ export function renderMeetingDetailPage(meetingId: number): string {
       function parseSlotKey(key) {
         const [d, h] = key.split('-');
         return { day: Number(d), hour: Number(h) };
+      }
+
+      function applySlotSelection(slotKey, cellEl, shouldSelect) {
+        if (shouldSelect) {
+          selectedSlots.add(slotKey);
+          cellEl.classList.add('mine');
+        } else {
+          selectedSlots.delete(slotKey);
+          cellEl.classList.remove('mine');
+        }
       }
 
       function pickColor(count, maxCount) {
@@ -479,16 +519,26 @@ export function renderMeetingDetailPage(meetingId: number): string {
             const count = Number(slotCounts[key] || 0);
             td.style.background = pickColor(count, maxCount);
             td.textContent = count > 0 ? String(count) : '';
+            td.dataset.key = key;
             if (selectedSlots.has(key)) td.classList.add('mine');
-            td.addEventListener('click', () => {
-              if (selectedSlots.has(key)) {
-                selectedSlots.delete(key);
-                td.classList.remove('mine');
-              } else {
-                selectedSlots.add(key);
-                td.classList.add('mine');
-              }
+
+            td.addEventListener('mousedown', (event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              isDragging = true;
+              dragShouldSelect = !selectedSlots.has(key);
+              applySlotSelection(key, td, dragShouldSelect);
             });
+
+            td.addEventListener('mouseenter', () => {
+              if (!isDragging) return;
+              applySlotSelection(key, td, dragShouldSelect);
+            });
+
+            td.addEventListener('click', (event) => {
+              event.preventDefault();
+            });
+
             tr.appendChild(td);
           }
           tbody.appendChild(tr);
@@ -541,6 +591,14 @@ export function renderMeetingDetailPage(meetingId: number): string {
       });
 
       refreshBtn.addEventListener('click', loadMeeting);
+
+      document.addEventListener('mouseup', () => {
+        isDragging = false;
+      });
+
+      document.addEventListener('mouseleave', () => {
+        isDragging = false;
+      });
 
       loadMeeting();
     </script>

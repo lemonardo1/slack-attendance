@@ -96,6 +96,25 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             border: 1px solid var(--border-color);
           }
 
+          .nav-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 8px 14px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            transition: border-color 0.2s, color 0.2s;
+          }
+
+          .nav-link:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+          }
+
           .view-btn {
             background: transparent;
             color: var(--text-secondary);
@@ -341,6 +360,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
                 <button class="view-btn active" id="boardViewBtn" onclick="switchView('board')">Board</button>
                 <button class="view-btn" id="listViewBtn" onclick="switchView('list')">List</button>
               </div>
+              <a class="nav-link" href="/meetings">Meetings</a>
               <div class="stats">
                 <div class="stat-item">
                   <span class="label">Total</span>

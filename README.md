@@ -111,6 +111,15 @@ npm run deploy
 - 📝 일별 업무 로그 표시
 - ◀️▶️ 이전/다음 주 탐색
 
+#### 회의 시간 조율
+**URL**: https://slack-attendance.lemonaatree.workers.dev/meetings
+
+빠른 사용 순서:
+- 1) 회의 제목/시간/가능 요일-시간 범위를 입력해 회의 생성
+- 2) 생성된 링크를 팀에 공유
+- 3) 각 팀원이 이름 입력 후 가능 시간을 클릭해 저장
+- 4) 하단 추천 시간대(겹치는 인원 순)로 최종 시간 결정
+
 Google 로그인을 활성화하려면 환경 변수에 아래 값을 추가하세요:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`

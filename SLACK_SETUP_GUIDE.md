@@ -281,6 +281,7 @@ Slack 채널에서 다음 명령어들을 시도해보세요:
 브라우저에서 접속:
 - **티켓 보드**: https://slack-attendance.lemonaatree.workers.dev/
 - **주간 통계**: https://slack-attendance.lemonaatree.workers.dev/stats
+- **회의 시간 조율**: https://slack-attendance.lemonaatree.workers.dev/meetings
 
 대시보드에서 다음 기능 테스트:
 - ✅ 새 티켓 생성
@@ -288,6 +289,7 @@ Slack 채널에서 다음 명령어들을 시도해보세요:
 - ✅ 상태 변경 (대기 → 진행 → 완료)
 - ✅ 담당자 선택
 - ✅ 시작일/마감일 설정
+- ✅ 회의 생성 후 가능 시간 선택/저장
 
 ---
 
@@ -360,6 +362,7 @@ npx wrangler d1 execute essentialcitronnier-attendance-slack --remote --file=mig
 ### 웹 대시보드
 - **티켓 보드**: https://slack-attendance.lemonaatree.workers.dev/
 - **주간 통계**: https://slack-attendance.lemonaatree.workers.dev/stats
+- **회의 시간 조율**: https://slack-attendance.lemonaatree.workers.dev/meetings
 
 ### 자동 알림
 - 매주 토요일 00:00 - 주간 요약
