@@ -33,7 +33,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>AURA | Ticket Board</title>
+        <title>Sinsin Dangbu | Ticket Board</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -142,12 +142,12 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
           .kanban-column {
             background: var(--bg-color);
-            padding: 24px;
+            padding: 16px;
             min-height: 70vh;
           }
 
           .column-header {
-            margin-bottom: 32px;
+            margin-bottom: 20px;
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -163,8 +163,8 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           .ticket-card {
             background: var(--card-bg);
             border: 1px solid var(--border-color);
-            padding: 24px;
-            margin-bottom: 24px;
+            padding: 16px;
+            margin-bottom: 12px;
             cursor: pointer;
             transition: border-color 0.2s;
             position: relative;
@@ -183,7 +183,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
           .list-view th {
             text-align: left;
-            padding: 16px 24px;
+            padding: 12px 16px;
             font-size: 12px;
             text-transform: uppercase;
             color: var(--text-secondary);
@@ -191,7 +191,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           }
 
           .list-view td {
-            padding: 20px 24px;
+            padding: 12px 16px;
             font-size: 14px;
             border-bottom: 1px solid var(--border-color);
             background: var(--bg-color);
@@ -204,7 +204,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           .status-tag {
             font-size: 10px;
             font-weight: 700;
-            padding: 4px 8px;
+            padding: 2px 6px;
             text-transform: uppercase;
             border: 1px solid currentColor;
             cursor: pointer;
@@ -220,14 +220,14 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             font-size: 10px;
             font-weight: 700;
             color: var(--text-secondary);
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             display: block;
           }
 
           .ticket-desc {
-            font-size: 16px;
-            line-height: 1.6;
-            margin-bottom: 24px;
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 12px;
           }
 
           .card-footer {
@@ -333,7 +333,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
         <div class="container" id="mainContainer" data-view="board">
           <header>
             <div class="header-left">
-              <h1>AURA BOARD</h1>
+              <h1>SINSIN DANGBU</h1>
               <p>MINIMALIST TICKET MANAGEMENT</p>
             </div>
             <div class="header-actions">
@@ -542,6 +542,20 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (currentDropdown) {
               currentDropdown.classList.remove('active');
               currentDropdown = null;
+            }
+          });
+
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+
+            const createModal = document.getElementById('createModal');
+            const editModal = document.getElementById('editModal');
+
+            if (createModal && createModal.classList.contains('active')) {
+              closeCreateModal();
+            }
+            if (editModal && editModal.classList.contains('active')) {
+              closeEditModal();
             }
           });
         </script>

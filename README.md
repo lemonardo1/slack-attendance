@@ -31,6 +31,12 @@ Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 및 업무 티켓 
   - 근무시간 자동 계산
   - 이전/다음 주 탐색
 
+- **회의 시간 조율(When2Meet 스타일)**: https://slack-attendance.lemonaatree.workers.dev/meetings
+  - + 버튼으로 회의 생성
+  - 요일별 시간 범위 설정 (예: 월 9~22, 화 10~15)
+  - 구성원별 가능 시간 선택
+  - 겹치는 가능한 시간 히트맵 시각화
+
 ### 🔔 자동 알림
 - 매주 토요일 00:00 - 주간 요약
 - 매일 19:00 - 일일 리마인더
@@ -99,11 +105,17 @@ npm run deploy
 **URL**: https://slack-attendance.lemonaatree.workers.dev/stats
 
 기능:
-- 🔐 로그인 보호 (환경 변수에서 비밀번호 설정)
+- 🔐 로그인 보호 (비밀번호 로그인 + Google 로그인 선택 가능)
 - 📊 주 단위 출퇴근 현황
 - ⏱️ 근무시간 자동 계산
 - 📝 일별 업무 로그 표시
 - ◀️▶️ 이전/다음 주 탐색
+
+Google 로그인을 활성화하려면 환경 변수에 아래 값을 추가하세요:
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI` (선택, 미설정 시 `/stats/auth/google/callback` 자동 사용)
+- `GOOGLE_ALLOWED_DOMAIN` (선택, 예: `example.com` 또는 `example.com,example.org`)
 
 ## 개발
 

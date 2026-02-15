@@ -1,6 +1,13 @@
 import { UserWeekStats, getDayName, formatTime } from './weeklyStats';
 
-export function renderLoginPage(errorMessage?: string): string {
+type LoginPageOptions = {
+  errorMessage?: string;
+  googleLoginEnabled?: boolean;
+};
+
+export function renderLoginPage(options?: LoginPageOptions): string {
+  const errorMessage = options?.errorMessage;
+  const googleLoginEnabled = options?.googleLoginEnabled ?? false;
   return `
     <!DOCTYPE html>
     <html lang="ko">
@@ -71,6 +78,38 @@ export function renderLoginPage(errorMessage?: string): string {
           button:hover {
             background: #5568d3;
           }
+          .google-btn {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: #fff;
+            color: #222;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 15px;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+          }
+          .google-btn:hover {
+            background: #f6f6f6;
+          }
+          .divider {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin: 12px 0 16px;
+            color: #999;
+            font-size: 12px;
+          }
+          .divider::before,
+          .divider::after {
+            content: '';
+            height: 1px;
+            background: #eee;
+            flex: 1;
+          }
           .error {
             color: #e74c3c;
             background: #fee;
@@ -85,6 +124,10 @@ export function renderLoginPage(errorMessage?: string): string {
         <div class="login-container">
           <h1>🔒 관리자 로그인</h1>
           ${errorMessage ? `<div class="error">${errorMessage}</div>` : ''}
+          ${googleLoginEnabled ? `
+            <a class="google-btn" href="/stats/auth/google">Google로 로그인</a>
+            <div class="divider">또는 비밀번호로 로그인</div>
+          ` : ''}
           <form method="POST" action="/stats/login">
             <div class="form-group">
               <label for="password">비밀번호</label>
@@ -418,4 +461,3 @@ function escapeHtml(text: string): string {
   };
   return text.replace(/[&<>"']/g, m => map[m]);
 }
-

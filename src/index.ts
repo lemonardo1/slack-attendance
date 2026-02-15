@@ -11,6 +11,7 @@ import {
 import { renderLoginPage, renderWeeklyStatsPage } from "./renderWeeklyStats";
 import { sendWeeklySummary } from "./sendWeeklySummary";
 import { renderTicketBoardPage, TicketItem, UserItem } from "./ticketBoard";
+import { renderMeetingHomePage, renderMeetingDetailPage, MeetingWindow } from "./meetingPlanner";
 
 interface SlackCommand {
   token: string;
@@ -28,6 +29,8 @@ interface SlackCommand {
 
 // In-memory session store (for simplicity)
 const sessions = new Set<string>();
+const googleOauthStates = new Map<string, number>();
+const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -48,12 +51,143 @@ function isAuthenticated(request: Request): boolean {
   return sessionToken ? sessions.has(sessionToken) : false;
 }
 
+type GoogleEnvKey =
+  | 'GOOGLE_CLIENT_ID'
+  | 'GOOGLE_CLIENT_SECRET'
+  | 'GOOGLE_REDIRECT_URI'
+  | 'GOOGLE_ALLOWED_DOMAIN';
+
+function getOptionalEnvVar(env: Env, key: GoogleEnvKey): string | undefined {
+  return (env as unknown as Record<string, string | undefined>)[key];
+}
+
+function isGoogleLoginEnabled(env: Env): boolean {
+  return Boolean(
+    getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID') &&
+    getOptionalEnvVar(env, 'GOOGLE_CLIENT_SECRET')
+  );
+}
+
+function getGoogleRedirectUri(request: Request, env: Env): string {
+  const configuredRedirectUri = getOptionalEnvVar(env, 'GOOGLE_REDIRECT_URI');
+  if (configuredRedirectUri) {
+    return configuredRedirectUri;
+  }
+
+  const callbackUrl = new URL('/stats/auth/google/callback', request.url);
+  return callbackUrl.toString();
+}
+
+function createGoogleOauthState(): string {
+  const state = generateSessionToken();
+  googleOauthStates.set(state, Date.now() + GOOGLE_OAUTH_STATE_TTL_MS);
+  return state;
+}
+
+function consumeGoogleOauthState(state: string): boolean {
+  const now = Date.now();
+
+  for (const [key, expiresAt] of googleOauthStates.entries()) {
+    if (expiresAt <= now) {
+      googleOauthStates.delete(key);
+    }
+  }
+
+  const expiresAt = googleOauthStates.get(state);
+  if (!expiresAt || expiresAt <= now) {
+    googleOauthStates.delete(state);
+    return false;
+  }
+
+  googleOauthStates.delete(state);
+  return true;
+}
+
+function isEmailAllowedByDomain(email: string, env: Env): boolean {
+  const allowedDomainConfig = getOptionalEnvVar(env, 'GOOGLE_ALLOWED_DOMAIN');
+  if (!allowedDomainConfig) {
+    return true;
+  }
+
+  const allowedDomains = allowedDomainConfig
+    .split(',')
+    .map((d: string) => d.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (allowedDomains.length === 0) {
+    return true;
+  }
+
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) return false;
+
+  return allowedDomains.includes(domain);
+}
+
 type LastAttendanceRecord = {
   type: 'in' | 'out';
   timestamp: string;
   ts: number; // epoch seconds (UTC)
   is_auto: number; // 0 or 1
 };
+
+type MeetingPollRecord = {
+  id: number;
+  title: string;
+  duration_minutes: number;
+  timezone: string;
+  windows_json: string;
+  created_at: string;
+};
+
+function parseMeetingWindows(input: unknown): MeetingWindow[] | null {
+  if (!Array.isArray(input)) return null;
+
+  const parsed: MeetingWindow[] = [];
+  for (const item of input) {
+    if (!item || typeof item !== 'object') return null;
+    const record = item as Record<string, unknown>;
+    const day = Number(record.day);
+    const startHour = Number(record.startHour);
+    const endHour = Number(record.endHour);
+
+    if (!Number.isInteger(day) || day < 1 || day > 7) return null;
+    if (!Number.isInteger(startHour) || !Number.isInteger(endHour)) return null;
+    if (startHour < 0 || endHour > 24 || startHour >= endHour) return null;
+
+    parsed.push({ day, startHour, endHour });
+  }
+
+  return parsed.length ? parsed : null;
+}
+
+function parseWindowsJson(windowsJson: string): MeetingWindow[] {
+  try {
+    const parsed = JSON.parse(windowsJson);
+    return parseMeetingWindows(parsed) || [];
+  } catch {
+    return [];
+  }
+}
+
+function buildValidSlotKeys(windows: MeetingWindow[], durationMinutes: number): string[] {
+  const durationHours = durationMinutes / 60;
+  const keys = new Set<string>();
+
+  for (const window of windows) {
+    const lastStartHour = window.endHour - durationHours;
+    for (let hour = window.startHour; hour <= lastStartHour; hour++) {
+      const slotKey = `${window.day}-${String(hour).padStart(2, '0')}`;
+      keys.add(slotKey);
+    }
+  }
+
+  return Array.from(keys).sort();
+}
+
+function sanitizeParticipantName(name: string): string {
+  return name.trim().replace(/\s+/g, ' ').slice(0, 40);
+}
 
 function getNextKst4amUtcMsFromIn(inUtcMs: number): number {
   // Represent Korea time by shifting UTC by +9h and using UTC getters/setters.
@@ -517,6 +651,266 @@ async function handleUpdateTicketDescription(request: Request, env: Env, ticketI
   }
 }
 
+async function showMeetingsHome(): Promise<Response> {
+  return new Response(renderMeetingHomePage(), {
+    headers: { "content-type": "text/html" },
+  });
+}
+
+async function showMeetingDetail(meetingId: number): Promise<Response> {
+  return new Response(renderMeetingDetailPage(meetingId), {
+    headers: { "content-type": "text/html" },
+  });
+}
+
+async function handleCreateMeeting(request: Request, env: Env): Promise<Response> {
+  try {
+    const body = await request.json() as {
+      title?: string;
+      duration_minutes?: number;
+      timezone?: string;
+      windows?: unknown;
+    };
+
+    const title = (body.title || "").trim();
+    if (!title) {
+      return new Response(JSON.stringify({ error: "회의 제목을 입력해주세요." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const durationMinutes = Number(body.duration_minutes);
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 60 || durationMinutes > 240 || durationMinutes % 60 !== 0) {
+      return new Response(JSON.stringify({ error: "회의 시간은 1시간 단위(60~240분)로 설정해주세요." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const windows = parseMeetingWindows(body.windows);
+    if (!windows) {
+      return new Response(JSON.stringify({ error: "시간 범위 형식이 올바르지 않습니다." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const validSlots = buildValidSlotKeys(windows, durationMinutes);
+    if (validSlots.length === 0) {
+      return new Response(JSON.stringify({ error: "설정한 시간 범위에서 가능한 회의 시작 시간이 없습니다." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const timezone = (body.timezone || "Asia/Seoul").trim() || "Asia/Seoul";
+    const result = await env.DB.prepare(`
+      INSERT INTO meeting_polls (title, duration_minutes, timezone, windows_json)
+      VALUES (?, ?, ?, ?)
+    `)
+      .bind(title.slice(0, 120), durationMinutes, timezone.slice(0, 64), JSON.stringify(windows))
+      .run();
+
+    return new Response(JSON.stringify({
+      success: true,
+      meeting_id: result.meta.last_row_id,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Create meeting error:", error);
+    return new Response(JSON.stringify({ error: "회의 생성 중 오류가 발생했습니다." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+async function handleListMeetings(env: Env): Promise<Response> {
+  try {
+    const { results } = await env.DB.prepare(`
+      SELECT id, title, duration_minutes, timezone, windows_json, created_at
+      FROM meeting_polls
+      ORDER BY created_at DESC
+      LIMIT 30
+    `).all();
+
+    const meetings = ((results || []) as unknown as MeetingPollRecord[]).map((m) => ({
+      id: m.id,
+      title: m.title,
+      duration_minutes: m.duration_minutes,
+      timezone: m.timezone,
+      created_at: m.created_at,
+      windows: parseWindowsJson(m.windows_json),
+    }));
+
+    return new Response(JSON.stringify({ meetings }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("List meetings error:", error);
+    return new Response(JSON.stringify({ error: "회의 목록 조회 중 오류가 발생했습니다." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+async function handleGetMeeting(env: Env, meetingId: number, participantNameRaw: string | null): Promise<Response> {
+  try {
+    const meeting = await env.DB.prepare(`
+      SELECT id, title, duration_minutes, timezone, windows_json, created_at
+      FROM meeting_polls
+      WHERE id = ?
+      LIMIT 1
+    `).bind(meetingId).first<MeetingPollRecord>();
+
+    if (!meeting) {
+      return new Response(JSON.stringify({ error: "회의를 찾을 수 없습니다." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const windows = parseWindowsJson(meeting.windows_json);
+    const validSlots = buildValidSlotKeys(windows, meeting.duration_minutes);
+
+    const participantName = sanitizeParticipantName(participantNameRaw || "");
+    let participantSlots: string[] = [];
+    if (participantName) {
+      const { results } = await env.DB.prepare(`
+        SELECT slot_key
+        FROM meeting_availability
+        WHERE meeting_id = ? AND participant_name = ?
+      `).bind(meetingId, participantName).all<{ slot_key: string }>();
+      participantSlots = (results || []).map((r) => r.slot_key);
+    }
+
+    const { results: countResults } = await env.DB.prepare(`
+      SELECT slot_key, COUNT(DISTINCT participant_name) as participant_count
+      FROM meeting_availability
+      WHERE meeting_id = ?
+      GROUP BY slot_key
+    `).bind(meetingId).all<{ slot_key: string; participant_count: number }>();
+
+    const { results: participantResults } = await env.DB.prepare(`
+      SELECT DISTINCT participant_name
+      FROM meeting_availability
+      WHERE meeting_id = ?
+      ORDER BY participant_name
+    `).bind(meetingId).all<{ participant_name: string }>();
+
+    const validSet = new Set(validSlots);
+    const slotCounts: Record<string, number> = {};
+    (countResults || []).forEach((row) => {
+      if (validSet.has(row.slot_key)) {
+        slotCounts[row.slot_key] = Number(row.participant_count || 0);
+      }
+    });
+
+    const participants = (participantResults || []).map((r) => r.participant_name);
+
+    return new Response(JSON.stringify({
+      meeting: {
+        id: meeting.id,
+        title: meeting.title,
+        duration_minutes: meeting.duration_minutes,
+        timezone: meeting.timezone,
+        created_at: meeting.created_at,
+        windows,
+      },
+      valid_slots: validSlots,
+      slot_counts: slotCounts,
+      participants,
+      participant_slots: participantSlots.filter((slot) => validSet.has(slot)),
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Get meeting error:", error);
+    return new Response(JSON.stringify({ error: "회의 조회 중 오류가 발생했습니다." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+async function handleSaveMeetingAvailability(request: Request, env: Env, meetingId: number): Promise<Response> {
+  try {
+    const body = await request.json() as {
+      participant_name?: string;
+      slots?: unknown;
+    };
+    const participantName = sanitizeParticipantName(body.participant_name || "");
+
+    if (!participantName) {
+      return new Response(JSON.stringify({ error: "이름을 입력해주세요." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!Array.isArray(body.slots)) {
+      return new Response(JSON.stringify({ error: "slots는 배열이어야 합니다." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const meeting = await env.DB.prepare(`
+      SELECT id, duration_minutes, windows_json
+      FROM meeting_polls
+      WHERE id = ?
+      LIMIT 1
+    `).bind(meetingId).first<{ id: number; duration_minutes: number; windows_json: string }>();
+
+    if (!meeting) {
+      return new Response(JSON.stringify({ error: "회의를 찾을 수 없습니다." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const validSlots = new Set(buildValidSlotKeys(parseWindowsJson(meeting.windows_json), meeting.duration_minutes));
+    const sanitizedSlots = Array.from(new Set(
+      body.slots
+        .map((slot) => String(slot))
+        .filter((slot) => /^([1-7])-(\d{2})$/.test(slot))
+        .filter((slot) => validSlots.has(slot))
+    ));
+
+    await env.DB.prepare(`
+      DELETE FROM meeting_availability
+      WHERE meeting_id = ? AND participant_name = ?
+    `).bind(meetingId, participantName).run();
+
+    for (const slot of sanitizedSlots) {
+      await env.DB.prepare(`
+        INSERT OR IGNORE INTO meeting_availability (meeting_id, participant_name, slot_key)
+        VALUES (?, ?, ?)
+      `).bind(meetingId, participantName, slot).run();
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      saved_count: sanitizedSlots.length,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Save meeting availability error:", error);
+    return new Response(JSON.stringify({ error: "가능 시간 저장 중 오류가 발생했습니다." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
 async function showTicketBoard(env: Env): Promise<Response> {
   try {
     // Get all work tickets
@@ -591,16 +985,21 @@ async function showAttendanceStats(env: Env): Promise<Response> {
 }
 
 async function handleStatsPage(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+
   // Check authentication
   if (!isAuthenticated(request)) {
-    return new Response(renderLoginPage(), {
+    const errorMessage = url.searchParams.get('error') || undefined;
+    return new Response(renderLoginPage({
+      errorMessage,
+      googleLoginEnabled: isGoogleLoginEnabled(env),
+    }), {
       headers: { "content-type": "text/html" },
     });
   }
 
   try {
     // Get week parameter from query string
-    const url = new URL(request.url);
     const weekParam = url.searchParams.get('week');
 
     const targetDate = weekParam ? new Date(weekParam) : new Date();
@@ -691,6 +1090,158 @@ async function handleStatsPage(request: Request, env: Env): Promise<Response> {
   }
 }
 
+async function handleGoogleLoginStart(request: Request, env: Env): Promise<Response> {
+  if (!isGoogleLoginEnabled(env)) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Google%20login%20is%20not%20configured' },
+    });
+  }
+
+  const state = createGoogleOauthState();
+  const redirectUri = getGoogleRedirectUri(request, env);
+  const clientId = getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID');
+  if (!clientId) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Google%20client%20id%20is%20missing' },
+    });
+  }
+  const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+  authUrl.search = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    prompt: 'select_account',
+  }).toString();
+
+  return new Response('', {
+    status: 302,
+    headers: { Location: authUrl.toString() },
+  });
+}
+
+async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Response> {
+  if (!isGoogleLoginEnabled(env)) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Google%20login%20is%20not%20configured' },
+    });
+  }
+
+  const url = new URL(request.url);
+  const oauthError = url.searchParams.get('error');
+  if (oauthError) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: `/stats?error=${encodeURIComponent(`Google login failed: ${oauthError}`)}` },
+    });
+  }
+
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+
+  if (!code || !state || !consumeGoogleOauthState(state)) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Invalid%20Google%20login%20state' },
+    });
+  }
+
+  const redirectUri = getGoogleRedirectUri(request, env);
+  const clientId = getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID');
+  const clientSecret = getOptionalEnvVar(env, 'GOOGLE_CLIENT_SECRET');
+  if (!clientId || !clientSecret) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Google%20login%20is%20not%20configured' },
+    });
+  }
+
+  try {
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const tokenError = await tokenResponse.text();
+      console.error('Google token exchange failed:', tokenResponse.status, tokenError);
+      return new Response('', {
+        status: 302,
+        headers: { Location: '/stats?error=Google%20token%20exchange%20failed' },
+      });
+    }
+
+    const tokenData = await tokenResponse.json() as { access_token?: string };
+    if (!tokenData.access_token) {
+      return new Response('', {
+        status: 302,
+        headers: { Location: '/stats?error=Google%20access%20token%20missing' },
+      });
+    }
+
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: {
+        Authorization: `Bearer ${tokenData.access_token}`,
+      },
+    });
+
+    if (!userInfoResponse.ok) {
+      const userInfoError = await userInfoResponse.text();
+      console.error('Google userinfo failed:', userInfoResponse.status, userInfoError);
+      return new Response('', {
+        status: 302,
+        headers: { Location: '/stats?error=Google%20profile%20lookup%20failed' },
+      });
+    }
+
+    const userInfo = await userInfoResponse.json() as { email?: string; verified_email?: boolean };
+
+    if (!userInfo.email || userInfo.verified_email !== true) {
+      return new Response('', {
+        status: 302,
+        headers: { Location: '/stats?error=Google%20account%20email%20is%20not%20verified' },
+      });
+    }
+
+    if (!isEmailAllowedByDomain(userInfo.email, env)) {
+      return new Response('', {
+        status: 302,
+        headers: { Location: '/stats?error=This%20Google%20account%20is%20not%20allowed' },
+      });
+    }
+
+    const sessionToken = generateSessionToken();
+    sessions.add(sessionToken);
+
+    return new Response('', {
+      status: 302,
+      headers: {
+        Location: '/stats',
+        'Set-Cookie': createSessionCookie(sessionToken),
+      },
+    });
+  } catch (error) {
+    console.error('Google login callback error:', error);
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Unexpected%20error%20during%20Google%20login' },
+    });
+  }
+}
+
 async function handleLogin(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 });
@@ -714,7 +1265,10 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     });
   }
 
-  return new Response(renderLoginPage('비밀번호가 올바르지 않습니다.'), {
+  return new Response(renderLoginPage({
+    errorMessage: '비밀번호가 올바르지 않습니다.',
+    googleLoginEnabled: isGoogleLoginEnabled(env),
+  }), {
     headers: { "content-type": "text/html" },
     status: 401,
   });
@@ -756,14 +1310,63 @@ export default {
       return handleLogin(request, env);
     }
 
+    // Google login start
+    if (url.pathname === '/stats/auth/google') {
+      return handleGoogleLoginStart(request, env);
+    }
+
+    // Google login callback
+    if (url.pathname === '/stats/auth/google/callback') {
+      return handleGoogleLoginCallback(request, env);
+    }
+
     // Logout endpoint
     if (url.pathname === '/stats/logout') {
       return handleLogout(request);
     }
 
+    // Meeting planner home
+    if (url.pathname === '/meetings' && request.method === 'GET') {
+      return showMeetingsHome();
+    }
+
+    // Meeting planner detail
+    if (url.pathname.startsWith('/meetings/') && request.method === 'GET') {
+      const meetingId = parseInt(url.pathname.split('/')[2]);
+      if (!isNaN(meetingId)) {
+        return showMeetingDetail(meetingId);
+      }
+    }
+
     // Ticket board (no auth required)
     if (url.pathname === '/') {
       return showTicketBoard(env);
+    }
+
+    // API: List meetings
+    if (url.pathname === '/api/meetings' && request.method === 'GET') {
+      return handleListMeetings(env);
+    }
+
+    // API: Create meeting
+    if (url.pathname === '/api/meetings' && request.method === 'POST') {
+      return handleCreateMeeting(request, env);
+    }
+
+    // API: Get meeting detail
+    if (url.pathname.startsWith('/api/meetings/') && request.method === 'GET') {
+      const meetingId = parseInt(url.pathname.split('/')[3]);
+      if (!isNaN(meetingId)) {
+        return handleGetMeeting(env, meetingId, url.searchParams.get('participant_name'));
+      }
+    }
+
+    // API: Save participant availability
+    if (url.pathname.startsWith('/api/meetings/') && url.pathname.endsWith('/availability') && request.method === 'PUT') {
+      const meetingId = parseInt(url.pathname.split('/')[3]);
+      if (!isNaN(meetingId)) {
+        return handleSaveMeetingAvailability(request, env, meetingId);
+      }
     }
 
     // API: Create ticket from web

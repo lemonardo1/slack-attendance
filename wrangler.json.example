@@ -14,7 +14,11 @@
     "SLACK_SIGNING_SECRET": "your-slack-signing-secret",
     "ADMIN_PASSWORD": "your-admin-password",
     "SLACK_WEBHOOK_URL": "your-slack-webhook-url",
-    "WORKER_URL": "https://your-worker.workers.dev"
+    "WORKER_URL": "https://your-worker.workers.dev",
+    "GOOGLE_CLIENT_ID": "your-google-client-id.apps.googleusercontent.com",
+    "GOOGLE_CLIENT_SECRET": "your-google-client-secret",
+    "GOOGLE_REDIRECT_URI": "https://your-worker.workers.dev/stats/auth/google/callback",
+    "GOOGLE_ALLOWED_DOMAIN": "example.com"
   },
   "triggers": {
     "crons": ["0 0 * * 6", "0 19 * * *"]
