@@ -15,32 +15,44 @@ export function renderLoginPage(options?: LoginPageOptions): string {
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>관리자 로그인</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          :root {
+            --bg-color: #000000;
+            --card-bg: #111111;
+            --border-color: #222222;
+            --text-primary: #ffffff;
+            --text-secondary: #666666;
+            --accent: #ffffff;
+            --danger: #ff4d4f;
           }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-primary);
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
+            padding: 20px;
           }
           .login-container {
-            background: white;
+            background: var(--card-bg);
             padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
             width: 100%;
             max-width: 400px;
           }
           h1 {
-            color: #333;
+            color: var(--text-primary);
             margin-bottom: 30px;
             text-align: center;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 22px;
           }
           .form-group {
             margin-bottom: 20px;
@@ -48,81 +60,88 @@ export function renderLoginPage(options?: LoginPageOptions): string {
           label {
             display: block;
             margin-bottom: 8px;
-            color: #555;
-            font-weight: 500;
+            color: var(--text-secondary);
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
           }
           input[type="password"] {
             width: 100%;
             padding: 12px;
-            border: 2px solid #ddd;
-            border-radius: 6px;
-            font-size: 16px;
-            transition: border-color 0.3s;
+            border: 1px solid var(--border-color);
+            background: #0b0b0b;
+            color: var(--text-primary);
+            font-size: 14px;
           }
           input[type="password"]:focus {
             outline: none;
-            border-color: #667eea;
+            border-color: var(--accent);
           }
           button {
             width: 100%;
             padding: 12px;
-            background: #667eea;
-            color: white;
-            border: none;
-            border-radius: 6px;
-            font-size: 16px;
-            font-weight: 600;
+            background: var(--accent);
+            color: var(--bg-color);
+            border: 1px solid var(--accent);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             cursor: pointer;
-            transition: background 0.3s;
           }
           button:hover {
-            background: #5568d3;
+            opacity: 0.85;
           }
           .google-btn {
             display: block;
             width: 100%;
             padding: 12px;
             margin-bottom: 12px;
-            background: #fff;
-            color: #222;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 15px;
-            font-weight: 600;
+            background: #0b0b0b;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
             text-align: center;
             text-decoration: none;
           }
           .google-btn:hover {
-            background: #f6f6f6;
+            border-color: var(--accent);
           }
           .divider {
             display: flex;
             align-items: center;
             gap: 10px;
             margin: 12px 0 16px;
-            color: #999;
-            font-size: 12px;
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
           }
           .divider::before,
           .divider::after {
             content: '';
             height: 1px;
-            background: #eee;
+            background: var(--border-color);
             flex: 1;
           }
           .error {
-            color: #e74c3c;
-            background: #fee;
+            color: var(--danger);
+            border: 1px solid var(--danger);
+            background: rgba(255, 77, 79, 0.08);
             padding: 10px;
-            border-radius: 6px;
             margin-bottom: 20px;
             text-align: center;
+            font-size: 12px;
           }
         </style>
       </head>
       <body>
         <div class="login-container">
-          <h1>🔒 관리자 로그인</h1>
+          <h1>Stats Login</h1>
           ${errorMessage ? `<div class="error">${errorMessage}</div>` : ''}
           ${googleLoginEnabled ? `
             <a class="google-btn" href="/stats/auth/google">Google로 로그인</a>
@@ -157,67 +176,86 @@ export function renderWeeklyStatsPage(
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>주간 근태 현황</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          :root {
+            --bg-color: #000000;
+            --card-bg: #111111;
+            --border-color: #222222;
+            --text-primary: #ffffff;
+            --text-secondary: #666666;
+            --accent: #ffffff;
+            --in-color: #8dd6a3;
+            --out-color: #ef8f8f;
+            --log-color: #8db5ff;
           }
           body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #f5f7fa;
-            padding: 20px;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-primary);
+            padding: 40px;
           }
           .container {
-            max-width: 1600px;
+            max-width: 1800px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            overflow: hidden;
+            background: var(--bg-color);
           }
           header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px 30px;
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-end;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--accent);
           }
           h1 {
-            font-size: 22px;
+            font-size: 28px;
+            text-transform: uppercase;
+            letter-spacing: -0.02em;
           }
-          .week-selector {
+          .header-sub {
+            margin-top: 6px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+          .header-actions {
             display: flex;
             gap: 8px;
             align-items: center;
           }
-          .week-selector button {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
+          .action-btn {
+            background: #0b0b0b;
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
           }
-          .week-selector button:hover {
-            background: rgba(255,255,255,0.3);
+          .action-btn:hover {
+            border-color: var(--accent);
           }
           .logout-btn {
-            background: rgba(255,255,255,0.2);
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 13px;
+            border-color: #6c2b2b;
+            color: #ff9f9f;
+          }
+          .logout-btn:hover {
+            border-color: #ff9f9f;
           }
           .table-container {
             overflow-x: auto;
-            padding: 15px;
+            border: 2px solid var(--border-color);
           }
           table {
             width: 100%;
@@ -225,33 +263,38 @@ export function renderWeeklyStatsPage(
             font-size: 13px;
           }
           th {
-            background: #f8f9fa;
+            background: #0b0b0b;
             padding: 10px 8px;
             text-align: left;
-            font-weight: 600;
-            color: #495057;
-            border-bottom: 2px solid #dee2e6;
+            font-weight: 700;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            border-bottom: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
             position: sticky;
             top: 0;
           }
           th.user-col {
-            min-width: 90px;
+            min-width: 120px;
             position: sticky;
             left: 0;
-            background: #f8f9fa;
+            background: #0b0b0b;
             z-index: 2;
           }
           td {
             padding: 8px;
-            border-bottom: 1px solid #e9ecef;
+            border-bottom: 1px solid var(--border-color);
+            border-right: 1px solid var(--border-color);
             vertical-align: top;
+            background: var(--bg-color);
           }
           td.user-col {
-            font-weight: 600;
-            color: #212529;
+            font-weight: 700;
+            color: var(--text-primary);
             position: sticky;
             left: 0;
-            background: white;
+            background: #0b0b0b;
             z-index: 1;
             font-size: 13px;
           }
@@ -266,13 +309,13 @@ export function renderWeeklyStatsPage(
             font-size: 11px;
           }
           .time-in {
-            color: #28a745;
+            color: var(--in-color);
           }
           .time-out {
-            color: #dc3545;
+            color: var(--out-color);
           }
           .work-hours {
-            color: #6c757d;
+            color: var(--text-secondary);
             font-size: 11px;
             font-weight: 600;
             margin-bottom: 6px;
@@ -280,22 +323,22 @@ export function renderWeeklyStatsPage(
           .work-logs {
             margin-top: 6px;
             padding-top: 6px;
-            border-top: 1px dashed #dee2e6;
+            border-top: 1px dashed var(--border-color);
           }
           .work-log-item {
-            background: #f8f9fa;
+            background: #0b0b0b;
+            border: 1px solid var(--border-color);
             padding: 4px 6px;
             margin-bottom: 4px;
-            border-radius: 4px;
             font-size: 11px;
-            color: #495057;
+            color: var(--text-primary);
             line-height: 1.4;
             display: flex;
             align-items: flex-start;
             gap: 4px;
           }
           .work-log-time {
-            color: #6c757d;
+            color: var(--text-secondary);
             font-size: 10px;
             flex-shrink: 0;
           }
@@ -304,7 +347,7 @@ export function renderWeeklyStatsPage(
             word-break: break-word;
           }
           .no-data {
-            color: #adb5bd;
+            color: var(--text-secondary);
             font-size: 12px;
           }
           .day-header {
@@ -312,30 +355,28 @@ export function renderWeeklyStatsPage(
           }
           .day-name {
             font-size: 11px;
-            color: #6c757d;
+            color: var(--text-secondary);
             display: block;
           }
           .day-date {
             font-size: 12px;
-            color: #212529;
+            color: var(--text-primary);
           }
           .weekend {
-            background: #fafbfc;
+            background: #070707;
           }
           .log-icon {
-            color: #667eea;
+            color: var(--log-color);
             font-weight: bold;
           }
           @media (max-width: 768px) {
             body {
-              padding: 0;
-            }
-            .container {
-              border-radius: 0;
+              padding: 16px;
             }
             header {
               flex-direction: column;
               gap: 10px;
+              align-items: flex-start;
             }
             .day-cell {
               min-width: 140px;
@@ -347,16 +388,16 @@ export function renderWeeklyStatsPage(
         <div class="container">
           <header>
             <div>
-              <h1>📊 주간 근태 현황</h1>
-              <p style="margin-top: 6px; opacity: 0.9; font-size: 13px;">주 시작: ${weekStart}</p>
+              <h1>Weekly Stats</h1>
+              <p class="header-sub">Week Start: ${weekStart}</p>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <div class="week-selector">
-                <button onclick="changeWeek(-1)">← 이전 주</button>
-                <button onclick="changeWeek(0)">이번 주</button>
-                <button onclick="changeWeek(1)">다음 주 →</button>
-              </div>
-              <a href="/stats/logout" class="logout-btn">로그아웃</a>
+            <div class="header-actions">
+              <a href="/" class="action-btn">Board</a>
+              <a href="/meetings" class="action-btn">Meetings</a>
+              <button class="action-btn" onclick="changeWeek(-1)">Prev Week</button>
+              <button class="action-btn" onclick="changeWeek(0)">This Week</button>
+              <button class="action-btn" onclick="changeWeek(1)">Next Week</button>
+              <a href="/stats/logout" class="action-btn logout-btn">Logout</a>
             </div>
           </header>
           <div class="table-container">
@@ -379,7 +420,7 @@ export function renderWeeklyStatsPage(
               <tbody>
                 ${userStats.length === 0 ? `
                   <tr>
-                    <td colspan="${weekDates.length + 1}" style="text-align: center; padding: 40px; color: #6c757d;">
+                    <td colspan="${weekDates.length + 1}" style="text-align: center; padding: 40px; color: var(--text-secondary);">
                       이번 주 출퇴근 기록이 없습니다.
                     </td>
                   </tr>

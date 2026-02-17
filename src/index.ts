@@ -368,9 +368,19 @@ async function handleWorkLog(command: SlackCommand, env: Env): Promise<Response>
     const ticketDescription = text.trim();
 
     // 2. Insert into work_tickets
-    await env.DB.prepare(
-      "INSERT INTO work_tickets (user_id, user_name, team_id, ticket_title, ticket_description, status) VALUES (?, ?, ?, ?, ?, 'pending')"
-    ).bind(user_id, user_name, team_id, ticketTitle, ticketDescription).run();
+    const nextSortOrder = await getNextTicketSortOrder(env, null);
+    await env.DB.prepare(`
+      INSERT INTO work_tickets (
+        user_id,
+        user_name,
+        team_id,
+        ticket_title,
+        ticket_description,
+        status,
+        parent_ticket_id,
+        sort_order
+      ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)
+    `).bind(user_id, user_name, team_id, ticketTitle, ticketDescription, nextSortOrder).run();
 
     // Also insert into work_logs for historical consistency (optional/legacy)
     await env.DB.prepare("INSERT INTO work_logs (user_id, user_name, team_id, log_content) VALUES (?, ?, ?, ?)")
@@ -460,6 +470,25 @@ async function handleEndCommand(command: SlackCommand, env: Env): Promise<Respon
   }
 }
 
+async function getNextTicketSortOrder(env: Env, parentTicketId: number | null): Promise<number> {
+  if (parentTicketId === null) {
+    const row = await env.DB.prepare(`
+      SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order
+      FROM work_tickets
+      WHERE parent_ticket_id IS NULL
+    `).first<{ next_order: number }>();
+    return Number(row?.next_order || 1);
+  }
+
+  const row = await env.DB.prepare(`
+    SELECT COALESCE(MAX(sort_order), 0) + 1 AS next_order
+    FROM work_tickets
+    WHERE parent_ticket_id = ?
+  `).bind(parentTicketId).first<{ next_order: number }>();
+
+  return Number(row?.next_order || 1);
+}
+
 async function handleCreateTicketFromWeb(request: Request, env: Env): Promise<Response> {
   try {
     const body = await request.json() as { description: string };
@@ -476,9 +505,19 @@ async function handleCreateTicketFromWeb(request: Request, env: Env): Promise<Re
     const defaultUserId = 'web-user';
     const defaultUserName = 'Web User';
 
+    const nextSortOrder = await getNextTicketSortOrder(env, null);
     const result = await env.DB.prepare(
-      "INSERT INTO work_tickets (user_id, user_name, team_id, ticket_title, ticket_description, status) VALUES (?, ?, ?, ?, ?, 'pending')"
-    ).bind(defaultUserId, defaultUserName, defaultTeamId, ticketTitle, ticketDescription).run();
+      `INSERT INTO work_tickets (
+        user_id,
+        user_name,
+        team_id,
+        ticket_title,
+        ticket_description,
+        status,
+        parent_ticket_id,
+        sort_order
+      ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)`
+    ).bind(defaultUserId, defaultUserName, defaultTeamId, ticketTitle, ticketDescription, nextSortOrder).run();
 
     return new Response(
       JSON.stringify({
@@ -557,7 +596,19 @@ async function handleUpdateTicketAssignee(request: Request, env: Env, ticketId: 
 
 async function handleDeleteTicket(request: Request, env: Env, ticketId: number): Promise<Response> {
   try {
-    await env.DB.prepare("DELETE FROM work_tickets WHERE id = ?").bind(ticketId).run();
+    await env.DB.prepare(`
+      WITH RECURSIVE descendants AS (
+        SELECT id
+        FROM work_tickets
+        WHERE id = ?
+        UNION ALL
+        SELECT wt.id
+        FROM work_tickets wt
+        INNER JOIN descendants d ON wt.parent_ticket_id = d.id
+      )
+      DELETE FROM work_tickets
+      WHERE id IN (SELECT id FROM descendants)
+    `).bind(ticketId).run();
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
@@ -565,6 +616,90 @@ async function handleDeleteTicket(request: Request, env: Env, ticketId: number):
   } catch (error) {
     console.error("Delete ticket error:", error);
     return new Response(JSON.stringify({ error: '티켓 삭제 중 오류가 발생했습니다' }), { status: 500, headers: { 'Content-Type': 'application/json' } });
+  }
+}
+
+async function handleUpdateTicketHierarchy(request: Request, env: Env, ticketId: number): Promise<Response> {
+  try {
+    const body = await request.json() as { parent_ticket_id?: number | null };
+    const parentTicketId = body.parent_ticket_id ?? null;
+
+    if (parentTicketId !== null && (!Number.isInteger(parentTicketId) || parentTicketId <= 0)) {
+      return new Response(JSON.stringify({ error: '올바르지 않은 parent_ticket_id 입니다' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const currentTicket = await env.DB.prepare("SELECT id FROM work_tickets WHERE id = ? LIMIT 1")
+      .bind(ticketId)
+      .first<{ id: number }>();
+    if (!currentTicket) {
+      return new Response(JSON.stringify({ error: '티켓을 찾을 수 없습니다' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (parentTicketId === ticketId) {
+      return new Response(JSON.stringify({ error: '자기 자신을 상위 티켓으로 설정할 수 없습니다' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (parentTicketId !== null) {
+      const parentTicket = await env.DB.prepare("SELECT id FROM work_tickets WHERE id = ? LIMIT 1")
+        .bind(parentTicketId)
+        .first<{ id: number }>();
+      if (!parentTicket) {
+        return new Response(JSON.stringify({ error: '상위 티켓을 찾을 수 없습니다' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const cycleHit = await env.DB.prepare(`
+        WITH RECURSIVE descendants AS (
+          SELECT id
+          FROM work_tickets
+          WHERE parent_ticket_id = ?
+          UNION ALL
+          SELECT wt.id
+          FROM work_tickets wt
+          INNER JOIN descendants d ON wt.parent_ticket_id = d.id
+        )
+        SELECT id
+        FROM descendants
+        WHERE id = ?
+        LIMIT 1
+      `).bind(ticketId, parentTicketId).first<{ id: number }>();
+
+      if (cycleHit) {
+        return new Response(JSON.stringify({ error: '하위 티켓 아래로는 이동할 수 없습니다' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    const nextSortOrder = await getNextTicketSortOrder(env, parentTicketId);
+    await env.DB.prepare(`
+      UPDATE work_tickets
+      SET parent_ticket_id = ?, sort_order = ?
+      WHERE id = ?
+    `).bind(parentTicketId, nextSortOrder, ticketId).run();
+
+    return new Response(JSON.stringify({ success: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error) {
+    console.error("Update hierarchy error:", error);
+    return new Response(JSON.stringify({ error: '계층 변경 중 오류가 발생했습니다' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
   }
 }
 
@@ -923,16 +1058,14 @@ async function showTicketBoard(env: Env): Promise<Response> {
         user_name,
         assignee_id,
         assignee_name,
+        parent_ticket_id,
+        sort_order,
         created_at,
         started_at,
         completed_at
       FROM work_tickets 
       ORDER BY 
-        CASE status
-          WHEN 'in_progress' THEN 1
-          WHEN 'pending' THEN 2
-          WHEN 'completed' THEN 3
-        END,
+        sort_order ASC,
         created_at DESC
     `);
     const { results: ticketsResults } = await ticketsStmt.all();
@@ -1404,9 +1537,15 @@ export default {
       return handleUpdateTicketDescription(request, env, ticketId);
     }
 
+    // API: Update ticket hierarchy
+    if (url.pathname.startsWith('/api/tickets/') && url.pathname.endsWith('/hierarchy') && request.method === 'PATCH') {
+      const ticketId = parseInt(url.pathname.split('/')[3]);
+      return handleUpdateTicketHierarchy(request, env, ticketId);
+    }
+
     // API: Delete ticket
     if (url.pathname.startsWith('/api/tickets/') && request.method === 'DELETE') {
-      const ticketId = parseInt(url.pathname.split('/')[2]);
+      const ticketId = parseInt(url.pathname.split('/')[3]);
       if (!isNaN(ticketId)) {
         return handleDeleteTicket(request, env, ticketId);
       }

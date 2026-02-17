@@ -1,0 +1,19 @@
+# UI Design Consistency Rules
+
+- Keep all first-party pages in a unified dark minimalist style.
+- Use color tokens consistently:
+  - background `#000000`
+  - panel `#111111`
+  - border `#222222`
+  - primary text `#ffffff`
+  - secondary text `#666666`
+- Reuse action button styling across pages:
+  - uppercase labels
+  - solid 1px border
+  - hover by border emphasis (not heavy shadows)
+- Keep layout language consistent with the ticket board:
+  - bold title + subtle subtitle
+  - header with bottom border
+  - card/table surfaces with thin borders
+- Avoid gradient backgrounds and rounded glossy components unless explicitly requested.
+- When adding new pages, include navigation entry points from main board and stats when relevant.
