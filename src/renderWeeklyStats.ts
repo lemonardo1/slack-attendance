@@ -1,4 +1,10 @@
 import { UserWeekStats, getDayName, formatTime } from './weeklyStats';
+import {
+  floatingAuthButtonStyles,
+  renderBackToBoardLink,
+  renderFloatingAuthButton,
+  sharedPageHeaderStyles
+} from './sharedPageHeader';
 
 type LoginPageOptions = {
   errorMessage?: string;
@@ -61,6 +67,8 @@ export function renderLoginPage(options?: LoginPageOptions): string {
             max-width: 980px;
             margin: 0 auto;
           }
+          ${sharedPageHeaderStyles}
+          ${floatingAuthButtonStyles}
           header {
             margin-bottom: 28px;
             padding-bottom: 14px;
@@ -189,6 +197,7 @@ export function renderLoginPage(options?: LoginPageOptions): string {
       </head>
       <body>
         <div class="container">
+          ${renderBackToBoardLink()}
           <header>
             <h1 class="header-title">Weekly Stats</h1>
             <p class="header-subtitle">attendance dashboard access</p>
@@ -211,6 +220,7 @@ export function renderLoginPage(options?: LoginPageOptions): string {
             <a class="back-link" href="/">Board로 이동</a>
           </section>
         </div>
+        ${renderFloatingAuthButton()}
       </body>
     </html>
   `;
@@ -260,33 +270,8 @@ export function renderWeeklyStatsPage(
             max-width: 1680px;
             margin: 0 auto;
           }
-          header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            margin-bottom: 20px;
-            padding-bottom: 14px;
-            border-bottom: 1px solid var(--border-color);
-          }
-          .page-title {
-            font-size: 32px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: -0.02em;
-          }
-          .page-subtitle {
-            margin-top: 6px;
-            color: var(--text-secondary);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-          }
-          .header-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-          }
+          ${sharedPageHeaderStyles}
+          ${floatingAuthButtonStyles}
           .action-btn {
             display: inline-flex;
             align-items: center;
@@ -471,11 +456,6 @@ export function renderWeeklyStatsPage(
             body {
               padding: 16px;
             }
-            header {
-              flex-direction: column;
-              gap: 10px;
-              align-items: flex-start;
-            }
             .summary-grid {
               grid-template-columns: 1fr;
             }
@@ -487,13 +467,13 @@ export function renderWeeklyStatsPage(
       </head>
       <body>
         <div class="container">
-          <header>
+          ${renderBackToBoardLink()}
+          <header class="page-header">
             <div>
               <h1 class="page-title">Weekly Stats</h1>
               <p class="page-subtitle">Week start ${escapeHtml(weekStart)} · attendance and work logs</p>
             </div>
-            <div class="header-actions">
-              <a href="/" class="action-btn">Board</a>
+            <div class="page-header-actions">
               <a href="/meetings" class="action-btn">Meetings</a>
               <button class="action-btn" onclick="changeWeek(-1)">Prev Week</button>
               <button class="action-btn" onclick="changeWeek(0)">This Week</button>
@@ -623,6 +603,7 @@ export function renderWeeklyStatsPage(
             window.location.search = params.toString();
           }
         </script>
+        ${renderFloatingAuthButton()}
       </body>
     </html>
   `;

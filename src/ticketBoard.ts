@@ -1,6 +1,7 @@
 /**
  * Ticket Board with editable dropdown cells
  */
+import { floatingAuthButtonStyles, renderFloatingAuthButton } from './sharedPageHeader';
 
 export interface TicketItem {
   id: number;
@@ -59,7 +60,9 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             --status-in-progress: #ffffff;
             --status-completed: #222222;
             --danger: #ff4444;
+            --header-btn-height: 34px;
           }
+          ${floatingAuthButtonStyles}
 
           * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
           
@@ -121,16 +124,33 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             font-size: 14px;
             margin-top: 4px;
           }
+          .project-context-trigger {
+            cursor: pointer;
+            user-select: none;
+          }
+          .project-context-trigger:hover h1 {
+            color: var(--text-secondary);
+          }
 
           .header-actions {
             display: flex;
-            gap: 24px;
+            gap: 16px;
             align-items: flex-end;
+            flex-wrap: wrap;
+            justify-content: flex-end;
           }
 
           .view-switcher {
             display: flex;
             border: 1px solid var(--border-color);
+            overflow: hidden;
+          }
+
+          .header-nav-links {
+            display: flex;
+            align-items: stretch;
+            gap: 8px;
+            flex-wrap: nowrap;
           }
 
           .status-filter-wrap {
@@ -218,11 +238,13 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             text-decoration: none;
             color: var(--text-primary);
             border: 1px solid var(--border-color);
-            padding: 8px 14px;
+            height: var(--header-btn-height);
+            padding: 0 14px;
             font-size: 12px;
             font-weight: 700;
             text-transform: uppercase;
             transition: border-color 0.2s, color 0.2s;
+            line-height: 1;
           }
 
           .nav-link:hover {
@@ -243,12 +265,19 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             background: transparent;
             color: var(--text-secondary);
             border: none;
-            padding: 8px 16px;
+            height: var(--header-btn-height);
+            padding: 0 22px;
             font-size: 12px;
             font-weight: 700;
             cursor: pointer;
             text-transform: uppercase;
             transition: all 0.2s;
+            margin: 0;
+            line-height: 1;
+          }
+
+          .view-btn + .view-btn {
+            border-left: 1px solid var(--border-color);
           }
 
           .view-btn.active {
@@ -257,14 +286,19 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           }
 
           .create-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             background: var(--accent);
             color: var(--bg-color);
             border: none;
-            padding: 12px 24px;
+            height: var(--header-btn-height);
+            padding: 0 24px;
             font-weight: 700;
             text-transform: uppercase;
             cursor: pointer;
             transition: opacity 0.2s;
+            line-height: 1;
           }
 
           .create-btn:hover { opacity: 0.8; }
@@ -463,6 +497,57 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             justify-content: space-between;
             align-items: center;
           }
+          .dropdown-item-leading {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+          }
+          .sparkles-icon {
+            width: 13px;
+            height: 13px;
+            flex-shrink: 0;
+          }
+          .dropdown-inline-panel {
+            padding: 10px 14px 12px;
+            border-top: 1px solid var(--border-color);
+            display: none;
+            gap: 8px;
+            flex-direction: column;
+          }
+          .dropdown-inline-panel.active {
+            display: flex;
+          }
+          .dropdown-inline-textarea {
+            width: 100%;
+            min-height: 64px;
+            resize: vertical;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 12px;
+            line-height: 1.4;
+            padding: 8px;
+          }
+          .dropdown-inline-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 8px;
+          }
+          .dropdown-inline-hint {
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap;
+          }
+          .dropdown-inline-status {
+            min-height: 14px;
+            color: var(--text-secondary);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+          }
           .dropdown-item:hover {
             background: var(--accent);
             color: var(--bg-color);
@@ -601,14 +686,44 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
           @media (max-width: 1024px) {
             .kanban-grid { grid-template-columns: 1fr; }
-            .header-actions { flex-direction: column; align-items: stretch; gap: 16px; }
+            .header-actions { align-items: flex-end; gap: 12px; }
             .stats { gap: 20px; }
             body { padding: 20px; }
           }
 
           @media (max-width: 800px) {
             body { padding: 12px; }
-            .stats { gap: 12px; flex-wrap: wrap; }
+            .header-actions {
+              width: auto;
+              margin-left: auto;
+              justify-content: flex-end;
+              gap: 8px;
+            }
+            .header-nav-links {
+              width: auto;
+              gap: 6px;
+            }
+            .header-nav-links .nav-link {
+              flex: 0 0 auto;
+              min-width: 110px;
+              padding-left: 12px;
+              padding-right: 12px;
+            }
+            .view-switcher {
+              width: auto;
+            }
+            .view-btn {
+              flex: 0 0 auto;
+              min-width: 110px;
+              padding-left: 12px;
+              padding-right: 12px;
+            }
+            .stats {
+              margin-left: auto;
+              justify-content: flex-end;
+              gap: 12px;
+              flex-wrap: nowrap;
+            }
             .week-progress {
               grid-template-columns: repeat(26, minmax(0, 1fr));
               margin-bottom: 24px;
@@ -705,17 +820,19 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
       <body>
         <div class="container" id="mainContainer" data-view="board">
           <header>
-            <div class="header-left">
-              <h1>SINSIN DANGBU</h1>
-              <p>MINIMALIST TICKET MANAGEMENT</p>
+            <div class="header-left project-context-trigger" onclick="openProjectContextModal()">
+              <h1>PROJECT CONTEXT</h1>
+              <p id="projectContextSummary">Click to set core context for AI</p>
             </div>
             <div class="header-actions">
               <div class="view-switcher">
                 <button class="view-btn active" id="boardViewBtn" onclick="switchView('board')">Board</button>
                 <button class="view-btn" id="listViewBtn" onclick="switchView('list')">List</button>
               </div>
-              <a class="nav-link" href="/stats">Stats</a>
-              <a class="nav-link" href="/meetings">Meetings</a>
+              <div class="header-nav-links">
+                <a class="nav-link" href="/stats">Stats</a>
+                <a class="nav-link" href="/meetings">Meetings</a>
+              </div>
               <div class="stats">
                 <div class="stat-item">
                   <span class="label">Total</span>
@@ -841,6 +958,18 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           </div>
         </div>
 
+        <div class="modal" id="projectContextModal" onclick="handleProjectContextBackdropClick(event)">
+          <div class="modal-content" onclick="event.stopPropagation()">
+            <h2 style="text-transform: uppercase; letter-spacing: 0.1em;">Project Context</h2>
+            <p style="color: var(--text-secondary); font-size: 12px; margin-top: 10px; line-height: 1.5;">핵심 배경(목표, 제약, 도메인)을 입력하면 AI Spark Subtasks와 AI Meeting 추천에 함께 반영됩니다.</p>
+            <textarea id="projectContextInput" rows="6" placeholder="예: B2B SaaS 온보딩 개선 프로젝트. 목표는 전환율 +15%. 제약: 2주 내 릴리즈, FE 리소스 1명."></textarea>
+            <div style="display: flex; gap: 16px; justify-content: flex-end;">
+              <button type="button" class="create-btn" style="background: var(--card-bg); color: white; border: 1px solid var(--border-color);" onclick="closeProjectContextModal()">Cancel</button>
+              <button type="button" class="create-btn" onclick="saveProjectContext()">Save Context</button>
+            </div>
+          </div>
+        </div>
+
         <div class="dropdown-menu" id="ticketContextMenu" onclick="event.stopPropagation()" style="position: fixed; left: 0; top: 0; right: auto; min-width: 280px; max-width: min(360px, calc(100vw - 24px)); z-index: 1300;"></div>
         <div class="parent-select-hint" id="parentSelectHint" onclick="event.stopPropagation()">
           <span id="parentSelectHintText">Select parent task</span>
@@ -855,6 +984,8 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           let createParentTicketId = null;
           let inlineEditState = null;
           let parentSelectionState = null;
+          let isGeneratingAiSubtasks = false;
+          const PROJECT_CONTEXT_STORAGE_KEY = 'projectCoreContext';
           const STATUS_FILTER_STORAGE_KEY = 'ticketStatusFilter';
           const ASSIGNEE_FILTER_STORAGE_KEY = 'ticketAssigneeFilter';
           const LIST_SORT_STORAGE_KEY = 'ticketListSort';
@@ -889,11 +1020,62 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           window.addEventListener('DOMContentLoaded', () => {
             const savedView = localStorage.getItem('ticketView');
             if (savedView) switchView(savedView);
+            initializeProjectContext();
             initializeStatusFilter();
             initializeAssigneeFilter();
             initListDragAndDrop();
             document.addEventListener('click', handleParentSelectionClick, true);
           });
+
+          function getProjectContext() {
+            return (localStorage.getItem(PROJECT_CONTEXT_STORAGE_KEY) || '').trim();
+          }
+
+          function updateProjectContextSummary() {
+            const summaryEl = document.getElementById('projectContextSummary');
+            if (!summaryEl) return;
+            const context = getProjectContext();
+            if (!context) {
+              summaryEl.textContent = 'Click to set core context for AI';
+              return;
+            }
+            const compact = context.replace(/\s+/g, ' ').trim();
+            summaryEl.textContent = compact.length > 80 ? compact.slice(0, 80) + '…' : compact;
+          }
+
+          function initializeProjectContext() {
+            updateProjectContextSummary();
+          }
+
+          function openProjectContextModal() {
+            closeContextMenu();
+            const modal = document.getElementById('projectContextModal');
+            const input = document.getElementById('projectContextInput');
+            if (!modal || !input) return;
+            input.value = getProjectContext();
+            modal.classList.add('active');
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+          }
+
+          function closeProjectContextModal() {
+            const modal = document.getElementById('projectContextModal');
+            if (!modal) return;
+            modal.classList.remove('active');
+          }
+
+          function handleProjectContextBackdropClick(event) {
+            event.stopPropagation();
+            closeProjectContextModal();
+          }
+
+          function saveProjectContext() {
+            const input = document.getElementById('projectContextInput');
+            if (!input) return;
+            localStorage.setItem(PROJECT_CONTEXT_STORAGE_KEY, input.value.trim().slice(0, 1500));
+            updateProjectContextSummary();
+            closeProjectContextModal();
+          }
 
           function toggleStatusFilter(event) {
             event.stopPropagation();
@@ -1342,6 +1524,29 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               <div class="dropdown-item" onclick="startInlineTaskEdit(event, \${ticketId})">Edit Description</div>
               <div class="dropdown-group">
                 <div class="dropdown-item" onclick="openCreateModal(\${ticketId})">└ Add Subtask</div>
+                <div class="dropdown-item" onclick="toggleAiSubtasksPanel(event, \${ticketId})">
+                  <span class="dropdown-item-leading">
+                    <svg class="sparkles-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path>
+                      <path d="M20 2v4"></path>
+                      <path d="M22 4h-4"></path>
+                      <circle cx="4" cy="20" r="2"></circle>
+                    </svg>
+                    Spark Subtasks
+                  </span>
+                </div>
+                <div class="dropdown-inline-panel" id="aiSubtaskPanel-\${ticketId}" onclick="event.stopPropagation()">
+                  <textarea
+                    class="dropdown-inline-textarea"
+                    id="aiSubtaskContext-\${ticketId}"
+                    placeholder="추가 지시사항 (선택)"
+                  ></textarea>
+                  <div class="dropdown-inline-actions">
+                    <span class="dropdown-inline-hint">AI가 5개를 생성합니다</span>
+                    <button type="button" class="inline-btn primary" onclick="submitAiSubtasks(event, \${ticketId})">Generate 5</button>
+                  </div>
+                  <div class="dropdown-inline-status" id="aiSubtaskStatus-\${ticketId}"></div>
+                </div>
                 <div class="dropdown-item" onclick="selectParentTicket(\${ticketId})">Choose Parent Task ┓</div>
               </div>
               <div class="dropdown-group">
@@ -1660,6 +1865,65 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             modal.classList.remove('active');
           }
 
+          function setAiSubtaskStatus(ticketId, message) {
+            const statusEl = document.getElementById('aiSubtaskStatus-' + ticketId);
+            if (statusEl) statusEl.textContent = message;
+          }
+
+          function toggleAiSubtasksPanel(event, ticketId) {
+            event.stopPropagation();
+            const panel = document.getElementById('aiSubtaskPanel-' + ticketId);
+            if (!panel) return;
+            panel.classList.toggle('active');
+            setAiSubtaskStatus(ticketId, '');
+            if (!panel.classList.contains('active')) return;
+            const input = document.getElementById('aiSubtaskContext-' + ticketId);
+            if (input) input.focus();
+          }
+
+          async function submitAiSubtasks(event, ticketId) {
+            event.stopPropagation();
+            if (isGeneratingAiSubtasks) return;
+
+            const input = document.getElementById('aiSubtaskContext-' + ticketId);
+            const extraContext = input ? input.value.trim() : '';
+            isGeneratingAiSubtasks = true;
+            document.body.style.cursor = 'wait';
+            setAiSubtaskStatus(ticketId, 'Generating...');
+
+            try {
+              const response = await fetch(\`/api/tickets/\${ticketId}/ai-subtasks\`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  count: 5,
+                  extra_context: extraContext,
+                  project_context: getProjectContext()
+                })
+              });
+
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) {
+                setAiSubtaskStatus(ticketId, data.error || '생성 실패');
+                return;
+              }
+
+              const createdCount = Number(data.created_count || 0);
+              if (!createdCount) {
+                setAiSubtaskStatus(ticketId, '생성된 subtask가 없습니다');
+                return;
+              }
+
+              setAiSubtaskStatus(ticketId, '생성 완료. 새로고침합니다...');
+              window.location.reload();
+            } catch (_error) {
+              setAiSubtaskStatus(ticketId, '생성 중 오류가 발생했습니다');
+            } finally {
+              isGeneratingAiSubtasks = false;
+              document.body.style.cursor = '';
+            }
+          }
+
           async function createTicket(event) {
             event.preventDefault();
             const description = event.target.ticketDescription.value;
@@ -1691,9 +1955,13 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (event.key !== 'Escape') return;
 
             const createModal = document.getElementById('createModal');
+            const projectContextModal = document.getElementById('projectContextModal');
 
             if (createModal && createModal.classList.contains('active')) {
               closeCreateModal();
+            }
+            if (projectContextModal && projectContextModal.classList.contains('active')) {
+              closeProjectContextModal();
             }
             if (parentSelectionState) {
               cancelParentSelection();
@@ -1703,6 +1971,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             closeInlineTaskEdit(true);
           });
         </script>
+        ${renderFloatingAuthButton()}
       </body>
     </html>
   `;

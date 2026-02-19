@@ -16,4 +16,5 @@
   - header with bottom border
   - card/table surfaces with thin borders
 - Avoid gradient backgrounds and rounded glossy components unless explicitly requested.
+- Do not use browser-native modal dialogs (`prompt`, `alert`, `confirm`) for first-party UI flows. Collect input and show feedback with in-page components (dropdown panels, inline forms, or custom modal surfaces that follow project styles).
 - When adding new pages, include navigation entry points from main board and stats when relevant.

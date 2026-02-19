@@ -1,3 +1,10 @@
+import {
+  floatingAuthButtonStyles,
+  renderBackToBoardLink,
+  renderFloatingAuthButton,
+  sharedPageHeaderStyles
+} from './sharedPageHeader';
+
 type MeetingWindow = {
   day: number; // 1=Mon ... 7=Sun
   startHour: number;
@@ -34,16 +41,9 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
         padding: 40px;
       }
       .wrap { max-width: 1400px; margin: 0 auto; }
-      .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 2px solid var(--accent);
-      }
-      h1 { font-size: 28px; letter-spacing: -0.02em; text-transform: uppercase; }
-      .sub { color: var(--sub); font-size: 13px; margin-top: 4px; }
+      ${floatingAuthButtonStyles}
+      ${sharedPageHeaderStyles}
+      ${floatingAuthButtonStyles}
       .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; background: var(--line); border: 2px solid var(--line); }
       .card {
         background: var(--panel);
@@ -80,6 +80,12 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
+      .btn-icon {
+        width: 13px;
+        height: 13px;
+        margin-right: 6px;
+        vertical-align: -2px;
+      }
       .btn-primary {
         border-color: var(--accent);
         background: var(--accent);
@@ -107,15 +113,13 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
   </head>
   <body>
     <div class="wrap">
-      <div style="margin-bottom: 12px;">
-        <a href="/" style="text-decoration: none; color: var(--sub); font-size: 13px;">← 티켓 보드로</a>
-      </div>
-      <div class="header">
+      ${renderBackToBoardLink()}
+      <header class="page-header">
         <div>
-          <h1>회의 시간 조율</h1>
-          <p class="sub">When2Meet처럼 겹치는 가능한 시간을 시각화합니다.</p>
+          <h1 class="page-title">회의 시간 조율</h1>
+          <p class="page-subtitle">When2Meet처럼 겹치는 가능한 시간을 시각화합니다.</p>
         </div>
-      </div>
+      </header>
 
       <div class="grid">
         <section class="card">
@@ -125,7 +129,15 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
               <label for="title">회의 제목</label>
               <input id="title" name="title" type="text" required placeholder="예: 프론트 주간 스탠드업" />
               <div class="inline-actions">
-                <button type="button" class="btn btn-ghost" id="generateByAiBtn" ${isAiScheduleEnabled ? '' : 'disabled'}>AI로 일정 생성하기</button>
+                <button type="button" class="btn btn-ghost" id="generateByAiBtn" ${isAiScheduleEnabled ? '' : 'disabled'}>
+                  <svg class="btn-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"></path>
+                    <path d="M20 2v4"></path>
+                    <path d="M22 4h-4"></path>
+                    <circle cx="4" cy="20" r="2"></circle>
+                  </svg>
+                  AI로 일정 생성하기
+                </button>
               </div>
               <p class="ai-help" id="aiHelp">${isAiScheduleEnabled ? '회의 주제를 대충 입력하고 버튼을 누르면 권장 시간대/회의 시간을 자동으로 채워줍니다.' : 'AI 일정 생성은 로그인 후 사용할 수 있습니다. /stats에서 로그인해주세요.'}</p>
             </div>
@@ -182,6 +194,7 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
       const generateByAiBtn = document.getElementById('generateByAiBtn');
       const aiHelp = document.getElementById('aiHelp');
       const isAiScheduleEnabled = ${isAiScheduleEnabled ? 'true' : 'false'};
+      const PROJECT_CONTEXT_STORAGE_KEY = 'projectCoreContext';
 
       function fillHourOptions(selectEl, selected) {
         selectEl.innerHTML = '';
@@ -261,6 +274,10 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
           .replaceAll("'", '&#39;');
       }
 
+      function getProjectContext() {
+        return (localStorage.getItem(PROJECT_CONTEXT_STORAGE_KEY) || '').trim();
+      }
+
       addWindowBtn.addEventListener('click', () => addWindowRow());
 
       createForm.addEventListener('submit', async (e) => {
@@ -307,7 +324,10 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
           const res = await fetch('/api/meetings/ai-plan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title }),
+            body: JSON.stringify({
+              title,
+              project_context: getProjectContext(),
+            }),
           });
           const data = await res.json();
           if (!res.ok) {
@@ -342,6 +362,7 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
       addWindowRow(2, 10, 15);
       loadMeetings();
     </script>
+    ${renderFloatingAuthButton()}
   </body>
 </html>
   `;
@@ -376,6 +397,7 @@ export function renderMeetingDetailPage(meetingId: number): string {
         padding: 12px;
       }
       .wrap { max-width: 1400px; margin: 0 auto; }
+      ${floatingAuthButtonStyles}
       .top {
         display: flex;
         justify-content: space-between;
@@ -673,6 +695,7 @@ export function renderMeetingDetailPage(meetingId: number): string {
 
       loadMeeting();
     </script>
+    ${renderFloatingAuthButton()}
   </body>
 </html>
   `;

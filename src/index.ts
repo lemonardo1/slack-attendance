@@ -27,10 +27,10 @@ interface SlackCommand {
   trigger_id: string;
 }
 
-// In-memory session store (for simplicity)
-const sessions = new Set<string>();
+const SESSION_TTL_SECONDS = 60 * 60 * 24;
 const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const GOOGLE_OAUTH_STATE_COOKIE = 'google_oauth_state';
+const SESSION_DEFAULT_INITIALS = 'ME';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -45,10 +45,141 @@ async function verifySlackRequest(request: Request, env: Env): Promise<boolean> 
   return await verifySlackSignature(request, env.SLACK_SIGNING_SECRET);
 }
 
-function isAuthenticated(request: Request): boolean {
+async function ensureSessionsTable(env: Env): Promise<void> {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL
+    )
+  `).run();
+  await env.DB.prepare(`
+    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
+    ON sessions(expires_at)
+  `).run();
+}
+
+async function ensureSessionProfilesTable(env: Env): Promise<void> {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS session_profiles (
+      token TEXT PRIMARY KEY,
+      initials TEXT NOT NULL
+    )
+  `).run();
+}
+
+function normalizeInitials(input: string | null | undefined): string {
+  const value = String(input || '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 2);
+  return value || SESSION_DEFAULT_INITIALS;
+}
+
+function deriveInitialsFromIdentity(identity: string): string {
+  const source = identity.split('@')[0] || identity;
+  const chunks = source
+    .split(/[^a-zA-Z0-9]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (chunks.length >= 2) {
+    return normalizeInitials(`${chunks[0][0]}${chunks[1][0]}`);
+  }
+  if (chunks.length === 1) {
+    return normalizeInitials(chunks[0].slice(0, 2));
+  }
+  return SESSION_DEFAULT_INITIALS;
+}
+
+async function createSession(env: Env, token: string, initials: string = SESSION_DEFAULT_INITIALS): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const expiresAt = now + SESSION_TTL_SECONDS;
+  await ensureSessionsTable(env);
+  await ensureSessionProfilesTable(env);
+  await env.DB.prepare(`
+    INSERT INTO sessions (token, created_at, expires_at)
+    VALUES (?, ?, ?)
+  `).bind(token, now, expiresAt).run();
+  await env.DB.prepare(`
+    INSERT INTO session_profiles (token, initials)
+    VALUES (?, ?)
+    ON CONFLICT(token) DO UPDATE SET initials = excluded.initials
+  `).bind(token, normalizeInitials(initials)).run();
+  await env.DB.prepare(`
+    DELETE FROM sessions
+    WHERE expires_at <= ?
+  `).bind(now).run();
+  await env.DB.prepare(`
+    DELETE FROM session_profiles
+    WHERE token NOT IN (SELECT token FROM sessions)
+  `).run();
+}
+
+async function deleteSession(env: Env, token: string): Promise<void> {
+  await ensureSessionsTable(env);
+  await ensureSessionProfilesTable(env);
+  await env.DB.prepare(`
+    DELETE FROM sessions
+    WHERE token = ?
+  `).bind(token).run();
+  await env.DB.prepare(`
+    DELETE FROM session_profiles
+    WHERE token = ?
+  `).bind(token).run();
+}
+
+async function isAuthenticated(request: Request, env: Env): Promise<boolean> {
   const cookieHeader = request.headers.get('Cookie');
   const sessionToken = getSessionFromCookie(cookieHeader);
-  return sessionToken ? sessions.has(sessionToken) : false;
+  if (!sessionToken) return false;
+
+  try {
+    await ensureSessionsTable(env);
+    const now = Math.floor(Date.now() / 1000);
+    const row = await env.DB.prepare(`
+      SELECT token
+      FROM sessions
+      WHERE token = ? AND expires_at > ?
+      LIMIT 1
+    `).bind(sessionToken, now).first<{ token: string }>();
+    return Boolean(row?.token);
+  } catch (error) {
+    console.error('Session auth check failed:', error);
+    return false;
+  }
+}
+
+async function getSessionAuthState(request: Request, env: Env): Promise<{ authenticated: boolean; initials: string | null }> {
+  const cookieHeader = request.headers.get('Cookie');
+  const sessionToken = getSessionFromCookie(cookieHeader);
+  if (!sessionToken) {
+    return { authenticated: false, initials: null };
+  }
+
+  try {
+    await ensureSessionsTable(env);
+    await ensureSessionProfilesTable(env);
+    const now = Math.floor(Date.now() / 1000);
+    const row = await env.DB.prepare(`
+      SELECT s.token AS token, p.initials AS initials
+      FROM sessions s
+      LEFT JOIN session_profiles p ON p.token = s.token
+      WHERE s.token = ? AND s.expires_at > ?
+      LIMIT 1
+    `).bind(sessionToken, now).first<{ token?: string; initials?: string }>();
+
+    if (!row?.token) {
+      return { authenticated: false, initials: null };
+    }
+
+    return {
+      authenticated: true,
+      initials: normalizeInitials(row.initials),
+    };
+  } catch (error) {
+    console.error('Session state lookup failed:', error);
+    return { authenticated: false, initials: null };
+  }
 }
 
 type GoogleEnvKey =
@@ -84,6 +215,12 @@ function getGoogleRedirectUri(request: Request, env: Env): string {
 
 function createGoogleOauthState(): string {
   return generateSessionToken();
+}
+
+function maskForLog(value: string | null | undefined, visibleChars: number = 4): string {
+  if (!value) return '(empty)';
+  if (value.length <= visibleChars) return '*'.repeat(value.length);
+  return `${'*'.repeat(Math.max(0, value.length - visibleChars))}${value.slice(-visibleChars)}`;
 }
 
 function getCookieValue(cookieHeader: string | null, name: string): string | null {
@@ -815,8 +952,8 @@ async function handleUpdateTicketDescription(request: Request, env: Env, ticketI
   }
 }
 
-async function showMeetingsHome(request: Request): Promise<Response> {
-  return new Response(renderMeetingHomePage(isAuthenticated(request)), {
+async function showMeetingsHome(request: Request, env: Env): Promise<Response> {
+  return new Response(renderMeetingHomePage(await isAuthenticated(request, env)), {
     headers: { "content-type": "text/html" },
   });
 }
@@ -921,8 +1058,188 @@ function parseFirstJsonObject(input: string): unknown | null {
   return null;
 }
 
+function normalizeAiSubtaskList(input: unknown, maxItems: number): string[] {
+  if (!Array.isArray(input)) return [];
+  const dedupe = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const item of input) {
+    if (typeof item !== 'string') continue;
+    const cleaned = item
+      .replace(/^\s*[-*•\d.)]+\s*/, '')
+      .trim()
+      .slice(0, 120);
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (dedupe.has(key)) continue;
+    dedupe.add(key);
+    normalized.push(cleaned);
+    if (normalized.length >= maxItems) break;
+  }
+
+  return normalized;
+}
+
+async function handleGenerateAiSubtasks(request: Request, env: Env, ticketId: number): Promise<Response> {
+  const geminiApiKey = getRawEnvVar(env, 'GEMINI_API_KEY');
+  if (!geminiApiKey) {
+    return new Response(JSON.stringify({ error: "GEMINI_API_KEY가 설정되지 않았습니다." }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const body = await request.json() as { count?: number; extra_context?: string; project_context?: string };
+    const requestedCount = Number(body.count);
+    const count = Number.isInteger(requestedCount)
+      ? Math.min(10, Math.max(1, requestedCount))
+      : 5;
+    const extraContext = (body.extra_context || '').trim().slice(0, 500);
+    const projectContext = (body.project_context || '').trim().slice(0, 1500);
+
+    const parent = await env.DB.prepare(`
+      SELECT id, ticket_title, ticket_description, user_id, user_name, team_id
+      FROM work_tickets
+      WHERE id = ?
+      LIMIT 1
+    `).bind(ticketId).first<{
+      id: number;
+      ticket_title: string;
+      ticket_description: string;
+      user_id: string;
+      user_name: string;
+      team_id: string;
+    }>();
+
+    if (!parent) {
+      return new Response(JSON.stringify({ error: "부모 티켓을 찾을 수 없습니다." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const prompt = [
+      "당신은 실무용 태스크 분해 도우미입니다.",
+      "부모 업무를 바탕으로 실행 가능한 subtask 목록을 생성하세요.",
+      "반드시 JSON만 출력하세요. 설명문/마크다운 금지.",
+      "JSON 스키마:",
+      "{",
+      '  "subtasks": ["하위 업무 1", "하위 업무 2"]',
+      "}",
+      "규칙:",
+      `- subtasks는 정확히 ${count}개`,
+      "- 각 항목은 12~80자 내외",
+      "- 번호/불릿 접두어 금지",
+      "- 의미 중복 금지",
+      "- 실제 작업 지시문 형태로 작성",
+      "",
+      `부모 티켓: ${parent.ticket_title}`,
+      `부모 설명: ${parent.ticket_description}`,
+      projectContext ? `프로젝트 컨텍스트: ${projectContext}` : "프로젝트 컨텍스트: 없음",
+      extraContext ? `추가 지시: ${extraContext}` : "추가 지시: 없음",
+    ].join('\n');
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+    const aiRes = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.4,
+        },
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      console.error('Gemini API error (subtasks):', aiRes.status, errText);
+      return new Response(JSON.stringify({ error: "AI subtask 생성 중 외부 API 오류가 발생했습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const aiData = await aiRes.json() as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+    };
+    const aiText = aiData.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
+    const parsed = parseFirstJsonObject(aiText) as { subtasks?: unknown } | null;
+    const subtasks = normalizeAiSubtaskList(parsed?.subtasks, count);
+
+    if (!subtasks.length) {
+      return new Response(JSON.stringify({ error: "AI가 유효한 subtask를 생성하지 못했습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const firstSortOrder = await getNextTicketSortOrder(env, parent.id);
+    const createdSubtasks: Array<{ ticket_id: number; ticket_title: string; ticket_description: string }> = [];
+
+    for (let i = 0; i < subtasks.length; i++) {
+      const ticketDescription = subtasks[i];
+      const insertRes = await env.DB.prepare(`
+        INSERT INTO work_tickets (
+          user_id,
+          user_name,
+          team_id,
+          ticket_title,
+          ticket_description,
+          status,
+          parent_ticket_id,
+          sort_order
+        ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).bind(
+        parent.user_id,
+        parent.user_name,
+        parent.team_id,
+        'FE-PENDING',
+        ticketDescription,
+        parent.id,
+        firstSortOrder + i
+      ).run();
+
+      const insertedId = Number(insertRes.meta.last_row_id || 0);
+      if (!Number.isInteger(insertedId) || insertedId <= 0) continue;
+      const ticketTitle = `FE-${String(insertedId).padStart(3, '0')}`;
+      await env.DB.prepare("UPDATE work_tickets SET ticket_title = ? WHERE id = ?")
+        .bind(ticketTitle, insertedId)
+        .run();
+
+      createdSubtasks.push({
+        ticket_id: insertedId,
+        ticket_title: ticketTitle,
+        ticket_description: ticketDescription,
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      parent_ticket_id: parent.id,
+      created_count: createdSubtasks.length,
+      created_subtasks: createdSubtasks,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Generate AI subtasks error:", error);
+    return new Response(JSON.stringify({ error: "AI subtask 생성 중 오류가 발생했습니다." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
 async function handleGenerateMeetingPlanByAi(request: Request, env: Env): Promise<Response> {
-  if (!isAuthenticated(request)) {
+  if (!await isAuthenticated(request, env)) {
     return new Response(JSON.stringify({ error: "로그인 후 사용할 수 있습니다." }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -938,8 +1255,9 @@ async function handleGenerateMeetingPlanByAi(request: Request, env: Env): Promis
   }
 
   try {
-    const body = await request.json() as { title?: string };
+    const body = await request.json() as { title?: string; project_context?: string };
     const roughTitle = (body.title || "").trim();
+    const projectContext = (body.project_context || '').trim().slice(0, 1500);
     if (!roughTitle) {
       return new Response(JSON.stringify({ error: "회의 제목을 입력해주세요." }), {
         status: 400,
@@ -963,6 +1281,7 @@ async function handleGenerateMeetingPlanByAi(request: Request, env: Env): Promis
       "- windows는 1~4개",
       "- 일반적인 업무 회의는 평일(월~금) 위주로 추천",
       "",
+      projectContext ? `프로젝트 컨텍스트: ${projectContext}` : "프로젝트 컨텍스트: 없음",
       `회의 제목: ${roughTitle}`,
     ].join('\n');
 
@@ -1310,7 +1629,7 @@ async function handleStatsPage(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
 
   // Check authentication
-  if (!isAuthenticated(request)) {
+  if (!await isAuthenticated(request, env)) {
     const errorMessage = url.searchParams.get('error') || undefined;
     return new Response(renderLoginPage({
       errorMessage,
@@ -1413,7 +1732,18 @@ async function handleStatsPage(request: Request, env: Env): Promise<Response> {
 }
 
 async function handleGoogleLoginStart(request: Request, env: Env): Promise<Response> {
+  console.log('[GoogleAuth][Start] Incoming login request', {
+    requestUrl: request.url,
+    method: request.method,
+    hasCookieHeader: Boolean(request.headers.get('Cookie')),
+  });
+
   if (!isGoogleLoginEnabled(env)) {
+    console.warn('[GoogleAuth][Start] Google login is not configured', {
+      hasClientId: Boolean(getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID')),
+      hasClientSecret: Boolean(getOptionalEnvVar(env, 'GOOGLE_CLIENT_SECRET')),
+      hasConfiguredRedirectUri: Boolean(getOptionalEnvVar(env, 'GOOGLE_REDIRECT_URI')),
+    });
     return new Response('', {
       status: 302,
       headers: { Location: '/stats?error=Google%20login%20is%20not%20configured' },
@@ -1424,11 +1754,17 @@ async function handleGoogleLoginStart(request: Request, env: Env): Promise<Respo
   const redirectUri = getGoogleRedirectUri(request, env);
   const clientId = getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID');
   if (!clientId) {
+    console.error('[GoogleAuth][Start] Missing GOOGLE_CLIENT_ID');
     return new Response('', {
       status: 302,
       headers: { Location: '/stats?error=Google%20client%20id%20is%20missing' },
     });
   }
+  console.log('[GoogleAuth][Start] Creating Google OAuth redirect', {
+    redirectUri,
+    stateSuffix: maskForLog(state),
+    clientIdSuffix: maskForLog(clientId),
+  });
   const authUrl = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authUrl.search = new URLSearchParams({
     client_id: clientId,
@@ -1449,7 +1785,17 @@ async function handleGoogleLoginStart(request: Request, env: Env): Promise<Respo
 }
 
 async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Response> {
+  console.log('[GoogleAuth][Callback] Incoming callback request', {
+    requestUrl: request.url,
+    method: request.method,
+  });
+
   if (!isGoogleLoginEnabled(env)) {
+    console.warn('[GoogleAuth][Callback] Google login is not configured', {
+      hasClientId: Boolean(getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID')),
+      hasClientSecret: Boolean(getOptionalEnvVar(env, 'GOOGLE_CLIENT_SECRET')),
+      hasConfiguredRedirectUri: Boolean(getOptionalEnvVar(env, 'GOOGLE_REDIRECT_URI')),
+    });
     return new Response('', {
       status: 302,
       headers: { Location: '/stats?error=Google%20login%20is%20not%20configured' },
@@ -1459,6 +1805,10 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
   const url = new URL(request.url);
   const oauthError = url.searchParams.get('error');
   if (oauthError) {
+    console.warn('[GoogleAuth][Callback] OAuth provider returned error', {
+      oauthError,
+      errorDescription: url.searchParams.get('error_description'),
+    });
     return new Response('', {
       status: 302,
       headers: { Location: `/stats?error=${encodeURIComponent(`Google login failed: ${oauthError}`)}` },
@@ -1467,8 +1817,19 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
 
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
+  const cookieState = getCookieValue(request.headers.get('Cookie'), GOOGLE_OAUTH_STATE_COOKIE);
+  const isStateValid = Boolean(code) && Boolean(state) && cookieState === state;
 
-  if (!code || !isValidGoogleOauthState(request, state)) {
+  console.log('[GoogleAuth][Callback] Parsed callback query params', {
+    hasCode: Boolean(code),
+    codeLength: code?.length ?? 0,
+    stateSuffix: maskForLog(state),
+    cookieStateSuffix: maskForLog(cookieState),
+    isStateValid,
+  });
+
+  if (!isStateValid) {
+    console.warn('[GoogleAuth][Callback] Invalid or missing OAuth state/code');
     const headers = new Headers();
     headers.set('Location', '/stats?error=Invalid%20Google%20login%20state');
     headers.append('Set-Cookie', clearGoogleOauthStateCookie());
@@ -1481,7 +1842,14 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
   const redirectUri = getGoogleRedirectUri(request, env);
   const clientId = getOptionalEnvVar(env, 'GOOGLE_CLIENT_ID');
   const clientSecret = getOptionalEnvVar(env, 'GOOGLE_CLIENT_SECRET');
+  console.log('[GoogleAuth][Callback] Prepared token exchange', {
+    redirectUri,
+    hasClientId: Boolean(clientId),
+    hasClientSecret: Boolean(clientSecret),
+    clientIdSuffix: maskForLog(clientId),
+  });
   if (!clientId || !clientSecret) {
+    console.error('[GoogleAuth][Callback] Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET');
     return new Response('', {
       status: 302,
       headers: { Location: '/stats?error=Google%20login%20is%20not%20configured' },
@@ -1502,6 +1870,10 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
         grant_type: 'authorization_code',
       }),
     });
+    console.log('[GoogleAuth][Callback] Token endpoint response received', {
+      status: tokenResponse.status,
+      ok: tokenResponse.ok,
+    });
 
     if (!tokenResponse.ok) {
       const tokenError = await tokenResponse.text();
@@ -1513,6 +1885,10 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     }
 
     const tokenData = await tokenResponse.json() as { access_token?: string };
+    console.log('[GoogleAuth][Callback] Token payload parsed', {
+      hasAccessToken: Boolean(tokenData.access_token),
+      accessTokenLength: tokenData.access_token?.length ?? 0,
+    });
     if (!tokenData.access_token) {
       return new Response('', {
         status: 302,
@@ -1525,6 +1901,10 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
         Authorization: `Bearer ${tokenData.access_token}`,
       },
     });
+    console.log('[GoogleAuth][Callback] Userinfo endpoint response received', {
+      status: userInfoResponse.status,
+      ok: userInfoResponse.ok,
+    });
 
     if (!userInfoResponse.ok) {
       const userInfoError = await userInfoResponse.text();
@@ -1536,8 +1916,13 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     }
 
     const userInfo = await userInfoResponse.json() as { email?: string; verified_email?: boolean };
+    console.log('[GoogleAuth][Callback] Userinfo payload parsed', {
+      emailSuffix: userInfo.email ? maskForLog(userInfo.email, 6) : '(missing)',
+      verifiedEmail: userInfo.verified_email === true,
+    });
 
     if (!userInfo.email || userInfo.verified_email !== true) {
+      console.warn('[GoogleAuth][Callback] Email missing or not verified');
       return new Response('', {
         status: 302,
         headers: { Location: '/stats?error=Google%20account%20email%20is%20not%20verified' },
@@ -1545,6 +1930,9 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     }
 
     if (!isEmailAllowedByDomain(userInfo.email, env)) {
+      console.warn('[GoogleAuth][Callback] Email domain not allowed', {
+        emailSuffix: maskForLog(userInfo.email, 6),
+      });
       return new Response('', {
         status: 302,
         headers: { Location: '/stats?error=This%20Google%20account%20is%20not%20allowed' },
@@ -1552,11 +1940,12 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     }
 
     const sessionToken = generateSessionToken();
-    sessions.add(sessionToken);
+    await createSession(env, sessionToken, deriveInitialsFromIdentity(userInfo.email));
     const headers = new Headers();
     headers.set('Location', '/stats');
     headers.append('Set-Cookie', createSessionCookie(sessionToken));
     headers.append('Set-Cookie', clearGoogleOauthStateCookie());
+    console.log('[GoogleAuth][Callback] Login successful, session created');
 
     return new Response('', {
       status: 302,
@@ -1586,7 +1975,7 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
 
   if (verifyPassword(password, adminPassword)) {
     const sessionToken = generateSessionToken();
-    sessions.add(sessionToken);
+    await createSession(env, sessionToken, 'AD');
 
     return new Response('', {
       status: 302,
@@ -1606,12 +1995,16 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
   });
 }
 
-async function handleLogout(request: Request): Promise<Response> {
+async function handleLogout(request: Request, env: Env): Promise<Response> {
   const cookieHeader = request.headers.get('Cookie');
   const sessionToken = getSessionFromCookie(cookieHeader);
 
   if (sessionToken) {
-    sessions.delete(sessionToken);
+    try {
+      await deleteSession(env, sessionToken);
+    } catch (error) {
+      console.error('Session delete failed:', error);
+    }
   }
 
   return new Response('', {
@@ -1620,6 +2013,17 @@ async function handleLogout(request: Request): Promise<Response> {
       'Location': '/stats',
       'Set-Cookie': 'session=; HttpOnly; Secure; SameSite=Strict; Max-Age=0; Path=/',
     },
+  });
+}
+
+async function handleAuthSession(request: Request, env: Env): Promise<Response> {
+  if (request.method !== 'GET') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+  const state = await getSessionAuthState(request, env);
+  return new Response(JSON.stringify(state), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -1666,12 +2070,17 @@ export default {
 
     // Logout endpoint
     if (url.pathname === '/stats/logout') {
-      return handleLogout(request);
+      return handleLogout(request, env);
+    }
+
+    // Session state endpoint (for floating auth button)
+    if (url.pathname === '/api/auth/session') {
+      return handleAuthSession(request, env);
     }
 
     // Meeting planner home
     if (url.pathname === '/meetings' && request.method === 'GET') {
-      return showMeetingsHome(request);
+      return showMeetingsHome(request, env);
     }
 
     // Meeting planner detail
@@ -1721,6 +2130,14 @@ export default {
     // API: Create ticket from web
     if (url.pathname === '/api/tickets' && request.method === 'POST') {
       return handleCreateTicketFromWeb(request, env);
+    }
+
+    // API: Generate subtasks via AI
+    if (url.pathname.startsWith('/api/tickets/') && url.pathname.endsWith('/ai-subtasks') && request.method === 'POST') {
+      const ticketId = parseInt(url.pathname.split('/')[3]);
+      if (!isNaN(ticketId)) {
+        return handleGenerateAiSubtasks(request, env, ticketId);
+      }
     }
 
     // API: Update ticket status

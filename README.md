@@ -2,6 +2,11 @@
 
 Cloudflare Workers + D1 Database를 사용한 Slack 출퇴근 및 업무 티켓 관리 시스템입니다.
 
+## quick deploy (배포)
+```
+wrangler deploy
+```
+
 ## ✨ 주요 기능
 
 ### 📥 출퇴근 관리
@@ -126,7 +131,7 @@ Google 로그인을 활성화하려면 환경 변수에 아래 값을 추가하�
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI` (선택, 미설정 시 `/stats/auth/google/callback` 자동 사용)
 - `GOOGLE_ALLOWED_DOMAIN` (선택, 예: `example.com` 또는 `example.com,example.org`)
-- `GEMINI_API_KEY` (회의 AI 일정 생성 기능용)
+- `GEMINI_API_KEY` (Spark subtask 생성 기능 및 회의 AI 일정 생성 기능용)
 
 ## 개발
 
