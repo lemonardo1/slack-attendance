@@ -548,6 +548,19 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             text-transform: uppercase;
             letter-spacing: 0.05em;
           }
+          .dropdown-inline-input {
+            width: 100%;
+            background: var(--bg-color);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            font-size: 12px;
+            line-height: 1.4;
+            padding: 8px;
+          }
+          .dropdown-inline-input:focus {
+            outline: none;
+            border-color: var(--accent);
+          }
           .dropdown-item:hover {
             background: var(--accent);
             color: var(--bg-color);
@@ -1829,13 +1842,147 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             updateParentSelectionVisuals();
           }
 
+          function toClientAssigneeKey(name) {
+            return String(name || 'unassigned')
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, '_');
+          }
+
+          function sortAssigneeMenuOptions(menu) {
+            const group = menu.querySelector('.dropdown-group');
+            const items = Array.from(menu.querySelectorAll('.dropdown-item[data-user-id]'));
+            items.sort((a, b) => {
+              const aName = (a.dataset.userName || '').trim();
+              const bName = (b.dataset.userName || '').trim();
+              return aName.localeCompare(bName, 'ko', { sensitivity: 'base' });
+            });
+            items.forEach((item) => menu.insertBefore(item, group || null));
+          }
+
+          function appendAssigneeOptionToMenus(userId, userName) {
+            if (!userId || !userName) return;
+            const menus = document.querySelectorAll('.assignee-menu[data-ticket-id]');
+            menus.forEach((menu) => {
+              const ticketId = Number(menu.dataset.ticketId);
+              if (!Number.isInteger(ticketId)) return;
+              const exists = Array.from(menu.querySelectorAll('.dropdown-item[data-user-id]'))
+                .some((el) => el.dataset.userId === userId);
+              if (exists) return;
+
+              const item = document.createElement('div');
+              item.className = 'dropdown-item';
+              item.dataset.ticketId = String(ticketId);
+              item.dataset.userId = userId;
+              item.dataset.userName = userName;
+              item.textContent = userName;
+              item.setAttribute('onclick', 'updateAssigneeFromDataset(event)');
+
+              const group = menu.querySelector('.dropdown-group');
+              menu.insertBefore(item, group || null);
+              sortAssigneeMenuOptions(menu);
+            });
+          }
+
+          function applyAssigneeToTicket(ticketId, assigneeName) {
+            const normalizedName = String(assigneeName || '').trim();
+            if (!normalizedName) return;
+            const assigneeKey = toClientAssigneeKey(normalizedName);
+
+            const card = document.querySelector('.ticket-card[data-ticket-id="' + ticketId + '"]');
+            if (card) {
+              card.dataset.assigneeKey = assigneeKey;
+            }
+            const row = document.querySelector('.list-row[data-ticket-id="' + ticketId + '"]');
+            if (row) {
+              row.dataset.assigneeKey = assigneeKey;
+              row.dataset.assigneeName = normalizedName;
+            }
+
+            const assigneeAreas = document.querySelectorAll('[data-ticket-id="' + ticketId + '"] .assignee');
+            assigneeAreas.forEach((area) => {
+              const box = area.querySelector('.assignee-box');
+              if (box) box.textContent = normalizedName.charAt(0).toUpperCase();
+              const label = area.querySelector('span');
+              if (label) label.textContent = normalizedName.toUpperCase();
+            });
+
+            applyCombinedFilters();
+            applyListSort();
+          }
+
           async function updateAssignee(ticketId, userId, userName) {
             const response = await fetch(\`/api/tickets/\${ticketId}/assignee\`, {
               method: 'PATCH',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ assignee_id: userId, assignee_name: userName })
             });
-            if (response.ok) window.location.reload();
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) return;
+            const nextAssigneeId = String(data.assignee_id || userId || '').trim();
+            const nextAssigneeName = String(data.assignee_name || userName || '').trim();
+            appendAssigneeOptionToMenus(nextAssigneeId, nextAssigneeName);
+            applyAssigneeToTicket(ticketId, nextAssigneeName);
+          }
+
+          async function updateAssigneeFromDataset(event) {
+            event.stopPropagation();
+            const target = event.currentTarget;
+            if (!(target instanceof HTMLElement)) return;
+            const ticketId = Number(target.dataset.ticketId);
+            const userId = target.dataset.userId || '';
+            const userName = target.dataset.userName || '';
+            if (!Number.isInteger(ticketId) || !userId || !userName) return;
+            await updateAssignee(ticketId, userId, userName);
+          }
+
+          function toggleAssigneeCreatePanel(event, panelKey) {
+            event.stopPropagation();
+            const panel = document.getElementById('assigneeCreatePanel-' + panelKey);
+            const status = document.getElementById('assigneeCreateStatus-' + panelKey);
+            if (!panel) return;
+            panel.classList.toggle('active');
+            if (status) status.textContent = '';
+            if (!panel.classList.contains('active')) return;
+            const input = document.getElementById('assigneeCreateInput-' + panelKey);
+            if (!(input instanceof HTMLInputElement)) return;
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+          }
+
+          function setAssigneeCreateStatus(panelKey, message) {
+            const status = document.getElementById('assigneeCreateStatus-' + panelKey);
+            if (status) status.textContent = message;
+          }
+
+          async function submitCustomAssignee(event, ticketId, panelKey) {
+            event.stopPropagation();
+            const input = document.getElementById('assigneeCreateInput-' + panelKey);
+            if (!(input instanceof HTMLInputElement)) return;
+            const assigneeName = input.value.trim();
+            if (!assigneeName) {
+              setAssigneeCreateStatus(panelKey, 'Name is required');
+              input.focus();
+              return;
+            }
+
+            setAssigneeCreateStatus(panelKey, 'Saving...');
+            const response = await fetch('/api/tickets/' + ticketId + '/assignee', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ assignee_name: assigneeName, create_user: true })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (response.ok) {
+              const nextAssigneeId = String(data.assignee_id || '').trim();
+              const nextAssigneeName = String(data.assignee_name || assigneeName).trim();
+              appendAssigneeOptionToMenus(nextAssigneeId, nextAssigneeName);
+              applyAssigneeToTicket(ticketId, nextAssigneeName);
+              input.value = '';
+              setAssigneeCreateStatus(panelKey, 'Saved');
+              return;
+            }
+            setAssigneeCreateStatus(panelKey, data.error || 'Save failed');
           }
 
           async function deleteTicket(ticketId) {
@@ -2008,10 +2155,8 @@ function renderColumnCards(tickets: TicketItem[], status: string, users: UserIte
                 <div class="assignee-box">${(t.assignee_name || t.user_name || 'U').charAt(0)}</div>
                 <span>${escapeHtml(t.assignee_name || t.user_name || 'USER').toUpperCase()}</span>
               </div>
-              <div class="dropdown-menu" style="top: auto; bottom: 24px; left: 0;">
-                ${users.map(u => `
-                  <div class="dropdown-item" onclick="updateAssignee(${t.id}, '${u.user_id}', '${u.user_name}')">${escapeHtml(u.user_name)}</div>
-                `).join('')}
+              <div class="dropdown-menu assignee-menu" data-ticket-id="${t.id}" style="top: auto; bottom: 24px; left: 0;">
+                ${renderAssigneeMenuItems(t.id, users, 'board')}
               </div>
             </div>
             <span>${formatDate(t.created_at)}</span>
@@ -2090,15 +2235,45 @@ function renderListRow(t: TicketItem, users: UserItem[], depth: number, path: nu
             <div class="assignee-box">${(t.assignee_name || t.user_name || 'U').charAt(0)}</div>
             <span style="font-size: 11px; font-weight: 600;">${escapeHtml(t.assignee_name || t.user_name || 'USER').toUpperCase()}</span>
           </div>
-          <div class="dropdown-menu" style="left: 0; right: auto;">
-            ${users.map(u => `
-              <div class="dropdown-item" onclick="updateAssignee(${t.id}, '${u.user_id}', '${u.user_name}')">${escapeHtml(u.user_name)}</div>
-            `).join('')}
+          <div class="dropdown-menu assignee-menu" data-ticket-id="${t.id}" style="left: 0; right: auto;">
+            ${renderAssigneeMenuItems(t.id, users, 'list')}
           </div>
         </div>
       </td>
       <td class="list-col-date" style="color: var(--text-secondary); font-size: 11px; font-weight: 600;">${formatDate(t.created_at)}</td>
     </tr>
+  `;
+}
+
+function renderAssigneeMenuItems(ticketId: number, users: UserItem[], viewKey: 'board' | 'list'): string {
+  const panelKey = `${viewKey}-${ticketId}`;
+  return `
+    ${users.map((u) => `
+      <div
+        class="dropdown-item"
+        data-ticket-id="${ticketId}"
+        data-user-id="${escapeHtml(u.user_id)}"
+        data-user-name="${escapeHtml(u.user_name)}"
+        onclick="updateAssigneeFromDataset(event)"
+      >${escapeHtml(u.user_name)}</div>
+    `).join('')}
+    <div class="dropdown-group">
+      <div class="dropdown-item" onclick="toggleAssigneeCreatePanel(event, '${panelKey}')">+ Add Assignee</div>
+      <div class="dropdown-inline-panel" id="assigneeCreatePanel-${panelKey}" onclick="event.stopPropagation()">
+        <input
+          id="assigneeCreateInput-${panelKey}"
+          class="dropdown-inline-input"
+          type="text"
+          placeholder="ASSIGNEE NAME"
+          maxlength="80"
+        />
+        <div class="dropdown-inline-actions">
+          <span class="dropdown-inline-hint">Stored to DB for reuse</span>
+          <button type="button" class="inline-btn primary" onclick="submitCustomAssignee(event, ${ticketId}, '${panelKey}')">Save</button>
+        </div>
+        <div class="dropdown-inline-status" id="assigneeCreateStatus-${panelKey}"></div>
+      </div>
+    </div>
   `;
 }
 

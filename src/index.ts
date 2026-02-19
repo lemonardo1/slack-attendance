@@ -35,6 +35,22 @@ const SESSION_DEFAULT_INITIALS = 'ME';
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
 
+function createManualAssigneeId(name: string, teamId?: string): string {
+  const nameSlug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 36);
+  const teamSlug = String(teamId || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 20);
+  return `manual_${teamSlug || 'team'}_${nameSlug || 'user'}`;
+}
+
 async function verifySlackRequest(request: Request, env: Env): Promise<boolean> {
   // Skip verification if SLACK_SIGNING_SECRET is not set (development mode)
   if (!env.SLACK_SIGNING_SECRET) {
@@ -744,13 +760,62 @@ async function handleUpdateTicketStatus(request: Request, env: Env, ticketId: nu
 
 async function handleUpdateTicketAssignee(request: Request, env: Env, ticketId: number): Promise<Response> {
   try {
-    const body = await request.json() as { assignee_id: string; assignee_name: string };
+    const body = await request.json() as {
+      assignee_id?: string;
+      assignee_name?: string;
+      create_user?: boolean;
+    };
+    const assigneeName = String(body.assignee_name || '').trim();
+    if (!assigneeName) {
+      return new Response(JSON.stringify({ error: '담당자 이름은 필수입니다' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+    if (assigneeName.length > 80) {
+      return new Response(JSON.stringify({ error: '담당자 이름은 80자 이하여야 합니다' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    let assigneeId = String(body.assignee_id || '').trim();
+    const shouldCreateUser = body.create_user === true || !assigneeId;
+
+    if (shouldCreateUser) {
+      const ticket = await env.DB.prepare(
+        "SELECT team_id FROM work_tickets WHERE id = ? LIMIT 1"
+      ).bind(ticketId).first<{ team_id: string }>();
+      if (!ticket) {
+        return new Response(JSON.stringify({ error: '티켓을 찾을 수 없습니다' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      assigneeId = createManualAssigneeId(assigneeName, ticket.team_id);
+
+      await env.DB.prepare(`
+        INSERT INTO users (user_id, user_name, display_name, team_id, role, is_active)
+        VALUES (?, ?, ?, ?, 'member', 1)
+        ON CONFLICT(user_id) DO UPDATE SET
+          user_name = excluded.user_name,
+          display_name = excluded.display_name,
+          team_id = excluded.team_id,
+          is_active = 1,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(assigneeId, assigneeName, assigneeName, ticket.team_id).run();
+    }
 
     await env.DB.prepare(
       "UPDATE work_tickets SET assignee_id = ?, assignee_name = ? WHERE id = ?"
-    ).bind(body.assignee_id, body.assignee_name, ticketId).run();
+    ).bind(assigneeId, assigneeName, ticketId).run();
 
-    return new Response(JSON.stringify({ success: true }), {
+    return new Response(JSON.stringify({
+      success: true,
+      assignee_id: assigneeId,
+      assignee_name: assigneeName,
+      created_user: shouldCreateUser
+    }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' }
     });
