@@ -5,6 +5,29 @@ type LoginPageOptions = {
   googleLoginEnabled?: boolean;
 };
 
+function isWeekendIndex(index: number): boolean {
+  return index === 0 || index === 6;
+}
+
+function countAttendanceEntries(userStats: UserWeekStats[], weekDates: string[]): number {
+  return userStats.reduce((count, user) => {
+    return count + weekDates.reduce((dayCount, date) => {
+      const day = user.days[date];
+      if (!day) return dayCount;
+      return dayCount + (day.checkIn || day.checkOut ? 1 : 0);
+    }, 0);
+  }, 0);
+}
+
+function countWorkLogs(userStats: UserWeekStats[], weekDates: string[]): number {
+  return userStats.reduce((count, user) => {
+    return count + weekDates.reduce((dayCount, date) => {
+      const day = user.days[date];
+      return dayCount + (day?.workLogs?.length || 0);
+    }, 0);
+  }, 0);
+}
+
 export function renderLoginPage(options?: LoginPageOptions): string {
   const errorMessage = options?.errorMessage;
   const googleLoginEnabled = options?.googleLoginEnabled ?? false;
@@ -19,43 +42,63 @@ export function renderLoginPage(options?: LoginPageOptions): string {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
+          * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
           :root {
             --bg-color: #000000;
-            --card-bg: #111111;
+            --panel: #111111;
             --border-color: #222222;
             --text-primary: #ffffff;
             --text-secondary: #666666;
-            --accent: #ffffff;
-            --danger: #ff4d4f;
           }
           body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
             background: var(--bg-color);
             color: var(--text-primary);
             min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
+            padding: 40px 20px;
           }
-          .login-container {
-            background: var(--card-bg);
-            padding: 40px;
-            border: 1px solid var(--border-color);
-            width: 100%;
-            max-width: 400px;
+          .container {
+            max-width: 980px;
+            margin: 0 auto;
           }
-          h1 {
-            color: var(--text-primary);
-            margin-bottom: 30px;
-            text-align: center;
+          header {
+            margin-bottom: 28px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border-color);
+          }
+          .header-title {
+            font-size: 28px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.04em;
-            font-size: 22px;
+            letter-spacing: -0.02em;
+          }
+          .header-subtitle {
+            margin-top: 6px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+          .login-wrap {
+            max-width: 430px;
+            margin: 0 auto;
+            background: var(--panel);
+            border: 1px solid var(--border-color);
+            padding: 28px;
+          }
+          .panel-title {
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            margin-bottom: 6px;
+          }
+          .panel-subtitle {
+            color: var(--text-secondary);
+            font-size: 12px;
+            margin-bottom: 20px;
           }
           .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 16px;
           }
           label {
             display: block;
@@ -76,28 +119,14 @@ export function renderLoginPage(options?: LoginPageOptions): string {
           }
           input[type="password"]:focus {
             outline: none;
-            border-color: var(--accent);
+            border-color: var(--text-primary);
           }
-          button {
+          .action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             width: 100%;
-            padding: 12px;
-            background: var(--accent);
-            color: var(--bg-color);
-            border: 1px solid var(--accent);
-            font-size: 12px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            cursor: pointer;
-          }
-          button:hover {
-            opacity: 0.85;
-          }
-          .google-btn {
-            display: block;
-            width: 100%;
-            padding: 12px;
-            margin-bottom: 12px;
+            padding: 10px 12px;
             background: #0b0b0b;
             color: var(--text-primary);
             border: 1px solid var(--border-color);
@@ -105,11 +134,14 @@ export function renderLoginPage(options?: LoginPageOptions): string {
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.06em;
-            text-align: center;
+            cursor: pointer;
             text-decoration: none;
           }
-          .google-btn:hover {
-            border-color: var(--accent);
+          .action-btn:hover {
+            border-color: var(--text-primary);
+          }
+          .google-btn {
+            margin-bottom: 12px;
           }
           .divider {
             display: flex;
@@ -129,31 +161,55 @@ export function renderLoginPage(options?: LoginPageOptions): string {
             flex: 1;
           }
           .error {
-            color: var(--danger);
-            border: 1px solid var(--danger);
-            background: rgba(255, 77, 79, 0.08);
+            color: #ff9f9f;
+            border: 1px solid #6c2b2b;
+            background: #1a0d0d;
             padding: 10px;
-            margin-bottom: 20px;
-            text-align: center;
+            margin-bottom: 16px;
             font-size: 12px;
+          }
+          .back-link {
+            margin-top: 14px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            text-decoration: none;
+            display: inline-block;
+          }
+          .back-link:hover {
+            color: var(--text-primary);
+          }
+          @media (max-width: 768px) {
+            body { padding: 20px 14px; }
+            .header-title { font-size: 22px; }
+            .login-wrap { padding: 20px; }
           }
         </style>
       </head>
       <body>
-        <div class="login-container">
-          <h1>Stats Login</h1>
-          ${errorMessage ? `<div class="error">${errorMessage}</div>` : ''}
-          ${googleLoginEnabled ? `
-            <a class="google-btn" href="/stats/auth/google">Google로 로그인</a>
-            <div class="divider">또는 비밀번호로 로그인</div>
-          ` : ''}
-          <form method="POST" action="/stats/login">
-            <div class="form-group">
-              <label for="password">비밀번호</label>
-              <input type="password" id="password" name="password" required autofocus />
-            </div>
-            <button type="submit">로그인</button>
-          </form>
+        <div class="container">
+          <header>
+            <h1 class="header-title">Weekly Stats</h1>
+            <p class="header-subtitle">attendance dashboard access</p>
+          </header>
+          <section class="login-wrap">
+            <h2 class="panel-title">관리자 로그인</h2>
+            <p class="panel-subtitle">Google 또는 비밀번호로 계속하세요.</p>
+            ${errorMessage ? `<div class="error">${escapeHtml(errorMessage)}</div>` : ''}
+            ${googleLoginEnabled ? `
+              <a class="action-btn google-btn" href="/stats/auth/google">Google 로그인</a>
+              <div class="divider">또는 비밀번호 로그인</div>
+            ` : ''}
+            <form method="POST" action="/stats/login">
+              <div class="form-group">
+                <label for="password">비밀번호</label>
+                <input type="password" id="password" name="password" required autofocus />
+              </div>
+              <button type="submit" class="action-btn">로그인</button>
+            </form>
+            <a class="back-link" href="/">Board로 이동</a>
+          </section>
         </div>
       </body>
     </html>
@@ -168,6 +224,9 @@ export function renderWeeklyStatsPage(
   const userStats = Array.from(userStatsMap.values()).sort((a, b) => 
     a.userName.localeCompare(b.userName)
   );
+  const memberCount = userStats.length;
+  const attendanceCount = countAttendanceEntries(userStats, weekDates);
+  const workLogCount = countWorkLogs(userStats, weekDates);
 
   return `
     <!DOCTYPE html>
@@ -180,17 +239,16 @@ export function renderWeeklyStatsPage(
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
         <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
+          * { margin: 0; padding: 0; box-sizing: border-box; border-radius: 0 !important; }
           :root {
             --bg-color: #000000;
-            --card-bg: #111111;
+            --panel: #111111;
             --border-color: #222222;
             --text-primary: #ffffff;
             --text-secondary: #666666;
-            --accent: #ffffff;
             --in-color: #8dd6a3;
             --out-color: #ef8f8f;
-            --log-color: #8db5ff;
+            --log-color: #9ab8ff;
           }
           body {
             font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -199,24 +257,24 @@ export function renderWeeklyStatsPage(
             padding: 40px;
           }
           .container {
-            max-width: 1800px;
+            max-width: 1680px;
             margin: 0 auto;
-            background: var(--bg-color);
           }
           header {
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
-            margin-bottom: 24px;
-            padding-bottom: 16px;
-            border-bottom: 2px solid var(--accent);
+            margin-bottom: 20px;
+            padding-bottom: 14px;
+            border-bottom: 1px solid var(--border-color);
           }
-          h1 {
-            font-size: 28px;
+          .page-title {
+            font-size: 32px;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: -0.02em;
           }
-          .header-sub {
+          .page-subtitle {
             margin-top: 6px;
             color: var(--text-secondary);
             font-size: 12px;
@@ -227,24 +285,25 @@ export function renderWeeklyStatsPage(
             display: flex;
             gap: 8px;
             align-items: center;
+            flex-wrap: wrap;
           }
           .action-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             background: #0b0b0b;
             color: var(--text-primary);
             border: 1px solid var(--border-color);
-            padding: 8px 12px;
+            padding: 9px 12px;
             cursor: pointer;
             font-size: 12px;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.06em;
             text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
           }
           .action-btn:hover {
-            border-color: var(--accent);
+            border-color: var(--text-primary);
           }
           .logout-btn {
             border-color: #6c2b2b;
@@ -253,9 +312,48 @@ export function renderWeeklyStatsPage(
           .logout-btn:hover {
             border-color: #ff9f9f;
           }
+          .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+            margin-bottom: 14px;
+          }
+          .summary-item {
+            background: var(--panel);
+            border: 1px solid var(--border-color);
+            padding: 14px;
+          }
+          .summary-label {
+            color: var(--text-secondary);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+          }
+          .summary-value {
+            margin-top: 8px;
+            font-size: 24px;
+            font-weight: 700;
+            line-height: 1;
+          }
+          .legend {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+            color: var(--text-secondary);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+          }
+          .legend b {
+            color: var(--text-primary);
+            font-weight: 700;
+          }
           .table-container {
             overflow-x: auto;
-            border: 2px solid var(--border-color);
+            border: 1px solid var(--border-color);
+            background: var(--panel);
           }
           table {
             width: 100%;
@@ -280,7 +378,7 @@ export function renderWeeklyStatsPage(
             position: sticky;
             left: 0;
             background: #0b0b0b;
-            z-index: 2;
+            z-index: 3;
           }
           td {
             padding: 8px;
@@ -295,7 +393,7 @@ export function renderWeeklyStatsPage(
             position: sticky;
             left: 0;
             background: #0b0b0b;
-            z-index: 1;
+            z-index: 2;
             font-size: 13px;
           }
           .day-cell {
@@ -346,6 +444,10 @@ export function renderWeeklyStatsPage(
             flex: 1;
             word-break: break-word;
           }
+          .work-log-label {
+            color: var(--log-color);
+            font-weight: 700;
+          }
           .no-data {
             color: var(--text-secondary);
             font-size: 12px;
@@ -365,10 +467,6 @@ export function renderWeeklyStatsPage(
           .weekend {
             background: #070707;
           }
-          .log-icon {
-            color: var(--log-color);
-            font-weight: bold;
-          }
           @media (max-width: 768px) {
             body {
               padding: 16px;
@@ -377,6 +475,9 @@ export function renderWeeklyStatsPage(
               flex-direction: column;
               gap: 10px;
               align-items: flex-start;
+            }
+            .summary-grid {
+              grid-template-columns: 1fr;
             }
             .day-cell {
               min-width: 140px;
@@ -388,8 +489,8 @@ export function renderWeeklyStatsPage(
         <div class="container">
           <header>
             <div>
-              <h1>Weekly Stats</h1>
-              <p class="header-sub">Week Start: ${weekStart}</p>
+              <h1 class="page-title">Weekly Stats</h1>
+              <p class="page-subtitle">Week start ${escapeHtml(weekStart)} · attendance and work logs</p>
             </div>
             <div class="header-actions">
               <a href="/" class="action-btn">Board</a>
@@ -400,6 +501,26 @@ export function renderWeeklyStatsPage(
               <a href="/stats/logout" class="action-btn logout-btn">Logout</a>
             </div>
           </header>
+          <section class="summary-grid">
+            <article class="summary-item">
+              <p class="summary-label">Members</p>
+              <p class="summary-value">${memberCount}</p>
+            </article>
+            <article class="summary-item">
+              <p class="summary-label">Attendance Entries</p>
+              <p class="summary-value">${attendanceCount}</p>
+            </article>
+            <article class="summary-item">
+              <p class="summary-label">Work Logs</p>
+              <p class="summary-value">${workLogCount}</p>
+            </article>
+          </section>
+          <div class="legend">
+            <span><b>IN</b> check-in time</span>
+            <span><b>OUT</b> check-out time</span>
+            <span><b>HOURS</b> calculated work duration</span>
+            <span><b>LOG</b> work note entries</span>
+          </div>
           <div class="table-container">
             <table>
               <thead>
@@ -407,7 +528,7 @@ export function renderWeeklyStatsPage(
                   <th class="user-col">이름</th>
                   ${weekDates.map((date, idx) => {
                     const dayName = getDayName(date);
-                    const isWeekend = idx === 0 || idx === 6;
+                    const isWeekend = isWeekendIndex(idx);
                     return `
                       <th class="day-header ${isWeekend ? 'weekend' : ''}">
                         <span class="day-name">${dayName}</span>
@@ -426,10 +547,10 @@ export function renderWeeklyStatsPage(
                   </tr>
                 ` : userStats.map(user => `
                   <tr>
-                    <td class="user-col">${user.userName}</td>
+                    <td class="user-col">${escapeHtml(user.userName)}</td>
                     ${weekDates.map((date, idx) => {
                       const day = user.days[date];
-                      const isWeekend = idx === 0 || idx === 6;
+                      const isWeekend = isWeekendIndex(idx);
                       
                       const hasAttendance = day.checkIn || day.checkOut;
                       const hasLogs = day.workLogs && day.workLogs.length > 0;
@@ -442,17 +563,17 @@ export function renderWeeklyStatsPage(
                         <td class="day-cell ${isWeekend ? 'weekend' : ''}">
                           ${hasAttendance ? `
                             <div class="time-info">
-                              <span class="time-in">🔵 ${formatTime(day.checkIn)}</span>
-                              <span class="time-out">🔴 ${formatTime(day.checkOut)}</span>
+                              <span class="time-in">IN ${formatTime(day.checkIn)}</span>
+                              <span class="time-out">OUT ${formatTime(day.checkOut)}</span>
                             </div>
-                            ${day.workHours !== null ? `<div class="work-hours">⏱️ ${day.workHours}시간</div>` : ''}
+                            ${day.workHours !== null ? `<div class="work-hours">HOURS ${day.workHours}</div>` : ''}
                           ` : ''}
                           
                           ${hasLogs ? `
                             <div class="work-logs">
                               ${day.workLogs.map(log => `
                                 <div class="work-log-item">
-                                  <span class="log-icon">📝</span>
+                                  <span class="work-log-label">LOG</span>
                                   <div class="work-log-content">
                                     ${escapeHtml(log.log_content)}
                                     <div class="work-log-time">${formatTime(log.timestamp)}</div>
@@ -471,17 +592,32 @@ export function renderWeeklyStatsPage(
           </div>
         </div>
         <script>
+          function parseWeekDate(week) {
+            const parts = week.split('-').map(Number);
+            if (parts.length !== 3 || parts.some(Number.isNaN)) return null;
+            return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12));
+          }
+
+          function formatWeekDate(date) {
+            return date.toISOString().slice(0, 10);
+          }
+
           function changeWeek(offset) {
             const params = new URLSearchParams(window.location.search);
             const currentWeek = params.get('week') || '${weekStart}';
-            const date = new Date(currentWeek);
+            const date = parseWeekDate(currentWeek);
+            if (!date) {
+              params.delete('week');
+              window.location.search = params.toString();
+              return;
+            }
             
             if (offset === 0) {
               // This week
               params.delete('week');
             } else {
-              date.setDate(date.getDate() + (offset * 7));
-              params.set('week', date.toISOString().split('T')[0]);
+              date.setUTCDate(date.getUTCDate() + (offset * 7));
+              params.set('week', formatWeekDate(date));
             }
             
             window.location.search = params.toString();

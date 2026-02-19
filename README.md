@@ -116,6 +116,7 @@ npm run deploy
 
 빠른 사용 순서:
 - 1) 회의 제목/시간/가능 요일-시간 범위를 입력해 회의 생성
+- 1-1) (선택) 회의 제목을 대충 입력하고 `AI로 일정 생성하기` 버튼으로 권장 시간대를 자동 생성 (로그인 필요)
 - 2) 생성된 링크를 팀에 공유
 - 3) 각 팀원이 이름 입력 후 가능 시간을 클릭해 저장
 - 4) 하단 추천 시간대(겹치는 인원 순)로 최종 시간 결정
@@ -125,6 +126,7 @@ Google 로그인을 활성화하려면 환경 변수에 아래 값을 추가하�
 - `GOOGLE_CLIENT_SECRET`
 - `GOOGLE_REDIRECT_URI` (선택, 미설정 시 `/stats/auth/google/callback` 자동 사용)
 - `GOOGLE_ALLOWED_DOMAIN` (선택, 예: `example.com` 또는 `example.com,example.org`)
+- `GEMINI_API_KEY` (회의 AI 일정 생성 기능용)
 
 ## 개발
 

@@ -29,8 +29,8 @@ interface SlackCommand {
 
 // In-memory session store (for simplicity)
 const sessions = new Set<string>();
-const googleOauthStates = new Map<string, number>();
 const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+const GOOGLE_OAUTH_STATE_COOKIE = 'google_oauth_state';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -57,8 +57,12 @@ type GoogleEnvKey =
   | 'GOOGLE_REDIRECT_URI'
   | 'GOOGLE_ALLOWED_DOMAIN';
 
-function getOptionalEnvVar(env: Env, key: GoogleEnvKey): string | undefined {
+function getRawEnvVar(env: Env, key: string): string | undefined {
   return (env as unknown as Record<string, string | undefined>)[key];
+}
+
+function getOptionalEnvVar(env: Env, key: GoogleEnvKey): string | undefined {
+  return getRawEnvVar(env, key);
 }
 
 function isGoogleLoginEnabled(env: Env): boolean {
@@ -79,28 +83,33 @@ function getGoogleRedirectUri(request: Request, env: Env): string {
 }
 
 function createGoogleOauthState(): string {
-  const state = generateSessionToken();
-  googleOauthStates.set(state, Date.now() + GOOGLE_OAUTH_STATE_TTL_MS);
-  return state;
+  return generateSessionToken();
 }
 
-function consumeGoogleOauthState(state: string): boolean {
-  const now = Date.now();
+function getCookieValue(cookieHeader: string | null, name: string): string | null {
+  if (!cookieHeader) return null;
+  const cookies = cookieHeader.split(';').map((cookie) => cookie.trim());
+  const prefix = `${name}=`;
+  const target = cookies.find((cookie) => cookie.startsWith(prefix));
+  return target ? target.slice(prefix.length) : null;
+}
 
-  for (const [key, expiresAt] of googleOauthStates.entries()) {
-    if (expiresAt <= now) {
-      googleOauthStates.delete(key);
-    }
-  }
+function createGoogleOauthStateCookie(state: string): string {
+  const maxAgeSeconds = Math.floor(GOOGLE_OAUTH_STATE_TTL_MS / 1000);
+  return `${GOOGLE_OAUTH_STATE_COOKIE}=${state}; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}; Path=/`;
+}
 
-  const expiresAt = googleOauthStates.get(state);
-  if (!expiresAt || expiresAt <= now) {
-    googleOauthStates.delete(state);
-    return false;
-  }
+function clearGoogleOauthStateCookie(): string {
+  return `${GOOGLE_OAUTH_STATE_COOKIE}=; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Path=/`;
+}
 
-  googleOauthStates.delete(state);
-  return true;
+function isValidGoogleOauthState(request: Request, callbackState: string | null): boolean {
+  if (!callbackState) return false;
+  const cookieHeader = request.headers.get('Cookie');
+  const cookieState = getCookieValue(cookieHeader, GOOGLE_OAUTH_STATE_COOKIE);
+  if (!cookieState) return false;
+
+  return cookieState === callbackState;
 }
 
 function isEmailAllowedByDomain(email: string, env: Env): boolean {
@@ -491,13 +500,33 @@ async function getNextTicketSortOrder(env: Env, parentTicketId: number | null): 
 
 async function handleCreateTicketFromWeb(request: Request, env: Env): Promise<Response> {
   try {
-    const body = await request.json() as { description: string };
+    const body = await request.json() as { description: string; parent_ticket_id?: number | null };
 
     if (!body.description || body.description.trim() === '') {
       return new Response(JSON.stringify({ error: '업무 내용을 입력해주세요' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     const ticketDescription = body.description.trim();
+    const parentTicketId = body.parent_ticket_id ?? null;
+    if (parentTicketId !== null && (!Number.isInteger(parentTicketId) || parentTicketId <= 0)) {
+      return new Response(JSON.stringify({ error: '올바르지 않은 상위 티켓입니다' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (parentTicketId !== null) {
+      const parentExists = await env.DB.prepare("SELECT id FROM work_tickets WHERE id = ? LIMIT 1")
+        .bind(parentTicketId)
+        .first<{ id: number }>();
+      if (!parentExists) {
+        return new Response(JSON.stringify({ error: '상위 티켓을 찾을 수 없습니다' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
     const lastTicket = await env.DB.prepare("SELECT id FROM work_tickets ORDER BY id DESC LIMIT 1").first();
     const nextId = (lastTicket ? (lastTicket.id as number) : 0) + 1;
     const ticketTitle = `FE-${String(nextId).padStart(3, '0')}`;
@@ -505,7 +534,7 @@ async function handleCreateTicketFromWeb(request: Request, env: Env): Promise<Re
     const defaultUserId = 'web-user';
     const defaultUserName = 'Web User';
 
-    const nextSortOrder = await getNextTicketSortOrder(env, null);
+    const nextSortOrder = await getNextTicketSortOrder(env, parentTicketId);
     const result = await env.DB.prepare(
       `INSERT INTO work_tickets (
         user_id,
@@ -516,8 +545,8 @@ async function handleCreateTicketFromWeb(request: Request, env: Env): Promise<Re
         status,
         parent_ticket_id,
         sort_order
-      ) VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)`
-    ).bind(defaultUserId, defaultUserName, defaultTeamId, ticketTitle, ticketDescription, nextSortOrder).run();
+      ) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`
+    ).bind(defaultUserId, defaultUserName, defaultTeamId, ticketTitle, ticketDescription, parentTicketId, nextSortOrder).run();
 
     return new Response(
       JSON.stringify({
@@ -786,8 +815,8 @@ async function handleUpdateTicketDescription(request: Request, env: Env, ticketI
   }
 }
 
-async function showMeetingsHome(): Promise<Response> {
-  return new Response(renderMeetingHomePage(), {
+async function showMeetingsHome(request: Request): Promise<Response> {
+  return new Response(renderMeetingHomePage(isAuthenticated(request)), {
     headers: { "content-type": "text/html" },
   });
 }
@@ -857,6 +886,166 @@ async function handleCreateMeeting(request: Request, env: Env): Promise<Response
   } catch (error) {
     console.error("Create meeting error:", error);
     return new Response(JSON.stringify({ error: "회의 생성 중 오류가 발생했습니다." }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
+function parseFirstJsonObject(input: string): unknown | null {
+  const trimmed = input.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Fall through and try fenced/embedded JSON extraction.
+  }
+
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (codeBlockMatch?.[1]) {
+    try {
+      return JSON.parse(codeBlockMatch[1].trim());
+    } catch {
+      // continue
+    }
+  }
+
+  const firstCurly = trimmed.indexOf('{');
+  const lastCurly = trimmed.lastIndexOf('}');
+  if (firstCurly >= 0 && lastCurly > firstCurly) {
+    try {
+      return JSON.parse(trimmed.slice(firstCurly, lastCurly + 1));
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function handleGenerateMeetingPlanByAi(request: Request, env: Env): Promise<Response> {
+  if (!isAuthenticated(request)) {
+    return new Response(JSON.stringify({ error: "로그인 후 사용할 수 있습니다." }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const geminiApiKey = getRawEnvVar(env, 'GEMINI_API_KEY');
+  if (!geminiApiKey) {
+    return new Response(JSON.stringify({ error: "GEMINI_API_KEY가 설정되지 않았습니다." }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  try {
+    const body = await request.json() as { title?: string };
+    const roughTitle = (body.title || "").trim();
+    if (!roughTitle) {
+      return new Response(JSON.stringify({ error: "회의 제목을 입력해주세요." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const prompt = [
+      "회의 일정 생성 도우미입니다.",
+      "입력된 회의 제목을 바탕으로 한국 팀 기준의 기본 회의 시간/요일 범위를 추천하세요.",
+      "반드시 JSON만 출력하세요. 설명문/마크다운 금지.",
+      "JSON 스키마:",
+      "{",
+      '  "title": "정리된 회의 제목 (최대 120자)",',
+      '  "duration_minutes": 60 | 120 | 180 | 240,',
+      '  "windows": [{ "day": 1-7, "startHour": 0-23, "endHour": 1-24 }]',
+      "}",
+      "규칙:",
+      "- day: 1=월, ..., 7=일",
+      "- 각 window는 startHour < endHour",
+      "- windows는 1~4개",
+      "- 일반적인 업무 회의는 평일(월~금) 위주로 추천",
+      "",
+      `회의 제목: ${roughTitle}`,
+    ].join('\n');
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+    const aiRes = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+        },
+      }),
+    });
+
+    if (!aiRes.ok) {
+      const errText = await aiRes.text();
+      console.error('Gemini API error:', aiRes.status, errText);
+      return new Response(JSON.stringify({ error: "AI 일정 생성 중 외부 API 오류가 발생했습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const aiData = await aiRes.json() as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+    };
+    const aiText = aiData.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('\n') || '';
+    const parsed = parseFirstJsonObject(aiText) as {
+      title?: string;
+      duration_minutes?: number;
+      windows?: unknown;
+    } | null;
+
+    if (!parsed) {
+      return new Response(JSON.stringify({ error: "AI 응답 형식을 해석하지 못했습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const title = String(parsed.title || roughTitle).trim().slice(0, 120) || roughTitle.slice(0, 120);
+    const durationMinutes = Number(parsed.duration_minutes);
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 60 || durationMinutes > 240 || durationMinutes % 60 !== 0) {
+      return new Response(JSON.stringify({ error: "AI가 유효한 회의 시간을 생성하지 못했습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const windows = parseMeetingWindows(parsed.windows);
+    if (!windows) {
+      return new Response(JSON.stringify({ error: "AI가 유효한 시간 범위를 생성하지 못했습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    const validSlots = buildValidSlotKeys(windows, durationMinutes);
+    if (!validSlots.length) {
+      return new Response(JSON.stringify({ error: "AI 추천 시간 범위에서 가능한 슬롯이 없습니다." }), {
+        status: 502,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      title,
+      duration_minutes: durationMinutes,
+      windows,
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Generate AI meeting plan error:", error);
+    return new Response(JSON.stringify({ error: "AI 일정 생성 중 오류가 발생했습니다." }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });
@@ -1252,7 +1441,10 @@ async function handleGoogleLoginStart(request: Request, env: Env): Promise<Respo
 
   return new Response('', {
     status: 302,
-    headers: { Location: authUrl.toString() },
+    headers: {
+      Location: authUrl.toString(),
+      'Set-Cookie': createGoogleOauthStateCookie(state),
+    },
   });
 }
 
@@ -1276,10 +1468,13 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
 
-  if (!code || !state || !consumeGoogleOauthState(state)) {
+  if (!code || !isValidGoogleOauthState(request, state)) {
+    const headers = new Headers();
+    headers.set('Location', '/stats?error=Invalid%20Google%20login%20state');
+    headers.append('Set-Cookie', clearGoogleOauthStateCookie());
     return new Response('', {
       status: 302,
-      headers: { Location: '/stats?error=Invalid%20Google%20login%20state' },
+      headers,
     });
   }
 
@@ -1358,19 +1553,23 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
 
     const sessionToken = generateSessionToken();
     sessions.add(sessionToken);
+    const headers = new Headers();
+    headers.set('Location', '/stats');
+    headers.append('Set-Cookie', createSessionCookie(sessionToken));
+    headers.append('Set-Cookie', clearGoogleOauthStateCookie());
 
     return new Response('', {
       status: 302,
-      headers: {
-        Location: '/stats',
-        'Set-Cookie': createSessionCookie(sessionToken),
-      },
+      headers,
     });
   } catch (error) {
     console.error('Google login callback error:', error);
+    const headers = new Headers();
+    headers.set('Location', '/stats?error=Unexpected%20error%20during%20Google%20login');
+    headers.append('Set-Cookie', clearGoogleOauthStateCookie());
     return new Response('', {
       status: 302,
-      headers: { Location: '/stats?error=Unexpected%20error%20during%20Google%20login' },
+      headers,
     });
   }
 }
@@ -1428,6 +1627,18 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Favicon endpoint
+    if (url.pathname === '/favicon.ico') {
+      const svgFavicon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#000"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="36" font-weight="700" fill="#fff">S</text></svg>`;
+      return new Response(svgFavicon, {
+        status: 200,
+        headers: {
+          'content-type': 'image/svg+xml; charset=utf-8',
+          'cache-control': 'public, max-age=86400',
+        },
+      });
+    }
+
     // Health check endpoint
     if (url.pathname === '/health') {
       return new Response('OK', { status: 200 });
@@ -1460,7 +1671,7 @@ export default {
 
     // Meeting planner home
     if (url.pathname === '/meetings' && request.method === 'GET') {
-      return showMeetingsHome();
+      return showMeetingsHome(request);
     }
 
     // Meeting planner detail
@@ -1484,6 +1695,11 @@ export default {
     // API: Create meeting
     if (url.pathname === '/api/meetings' && request.method === 'POST') {
       return handleCreateMeeting(request, env);
+    }
+
+    // API: Generate meeting plan via AI (auth required)
+    if (url.pathname === '/api/meetings/ai-plan' && request.method === 'POST') {
+      return handleGenerateMeetingPlanByAi(request, env);
     }
 
     // API: Get meeting detail

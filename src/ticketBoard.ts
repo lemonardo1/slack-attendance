@@ -28,6 +28,14 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
   const pendingCount = tickets.filter(t => t.status === 'pending').length;
   const inProgressCount = tickets.filter(t => t.status === 'in_progress').length;
   const completedCount = tickets.filter(t => t.status === 'completed').length;
+  const weeklyProgress = renderWeekProgress(tickets);
+  const assigneeFilterNames = Array.from(
+    new Set(
+      tickets
+        .map((t) => (t.assignee_name || t.user_name || 'Unassigned').trim())
+        .filter(Boolean)
+    )
+  ).sort((a, b) => a.localeCompare(b, 'en', { sensitivity: 'base' }));
 
   return `
     <!DOCTYPE html>
@@ -69,9 +77,36 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             display: flex;
             justify-content: space-between;
             align-items: flex-end;
-            margin-bottom: 60px;
+            margin-bottom: 12px;
             padding-bottom: 20px;
             border-bottom: 2px solid var(--accent);
+          }
+
+          .week-progress {
+            display: grid;
+            grid-template-columns: repeat(52, minmax(0, 1fr));
+            gap: 0;
+            margin-bottom: 32px;
+            user-select: none;
+          }
+
+          .week-cell {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 5px;
+            font-size: 20px;
+            line-height: 1;
+            color: var(--text-secondary);
+            cursor: default;
+          }
+
+          .week-cell.filled {
+            color: var(--text-primary);
+          }
+
+          .week-cell.empty {
+            color: #2f2f2f;
           }
 
           .header-left h1 {
@@ -104,19 +139,10 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             align-items: center;
           }
 
-          .status-filter-btn {
-            background: transparent;
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            padding: 8px 12px;
-            font-size: 12px;
-            font-weight: 700;
+          .status-filter-label {
+            color: var(--text-secondary);
             text-transform: uppercase;
-            cursor: pointer;
-          }
-
-          .status-filter-btn:hover {
-            border-color: var(--accent);
+            letter-spacing: 0.06em;
           }
 
           .status-filter-dropdown {
@@ -125,6 +151,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             top: calc(100% + 6px);
             right: 0;
             min-width: 220px;
+            max-width: min(220px, calc(100vw - 24px));
             background: #111111;
             border: 1px solid var(--border-color);
             z-index: 1200;
@@ -157,6 +184,31 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
           .status-filter-item:last-child {
             margin-bottom: 0;
+          }
+
+          .filter-sort-actions {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+          }
+
+          .filter-sort-btn {
+            background: transparent;
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            padding: 8px 10px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+          }
+
+          .filter-sort-btn:hover,
+          .filter-sort-btn.active {
+            color: var(--text-primary);
+            border-color: var(--text-primary);
           }
 
           .nav-link {
@@ -312,18 +364,6 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             background: #0b0b0b;
           }
 
-          .drag-handle {
-            cursor: grab;
-            color: var(--text-secondary);
-            margin-right: 10px;
-            font-size: 11px;
-            user-select: none;
-          }
-
-          .drag-handle:active {
-            cursor: grabbing;
-          }
-
           .task-cell {
             display: flex;
             align-items: center;
@@ -432,6 +472,98 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             color: white;
           }
 
+          .task-desc-inline-edit {
+            margin-top: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+          }
+
+          .task-desc-inline-edit textarea {
+            width: 100%;
+            background: var(--bg-color);
+            border: 1px solid var(--accent);
+            color: var(--text-primary);
+            padding: 10px;
+            margin: 0;
+            font-size: 13px;
+            line-height: 1.4;
+            resize: vertical;
+            min-height: 80px;
+          }
+
+          .task-desc-inline-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 8px;
+          }
+
+          .inline-btn {
+            border: 1px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-primary);
+            padding: 6px 10px;
+            text-transform: uppercase;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+          }
+
+          .inline-btn:hover {
+            border-color: var(--accent);
+          }
+
+          .inline-btn.primary {
+            background: var(--accent);
+            color: var(--bg-color);
+            border-color: var(--accent);
+          }
+
+          .parent-select-hint {
+            display: none;
+            position: fixed;
+            left: 50%;
+            bottom: 16px;
+            transform: translateX(-50%);
+            z-index: 2200;
+            background: var(--card-bg);
+            border: 1px solid var(--accent);
+            color: var(--text-primary);
+            padding: 10px 12px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            gap: 10px;
+            align-items: center;
+          }
+
+          .parent-select-hint.active {
+            display: inline-flex;
+          }
+
+          .parent-select-active [data-ticket-id] {
+            transition: opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+          }
+
+          .parent-select-source {
+            opacity: 0.45;
+          }
+
+          .parent-select-disabled {
+            opacity: 0.3;
+          }
+
+          .ticket-card.parent-select-candidate {
+            border-color: var(--accent);
+            box-shadow: inset 0 0 0 1px var(--accent);
+          }
+
+          .list-row.parent-select-candidate td {
+            border-top: 1px solid var(--accent);
+            border-bottom: 1px solid var(--accent);
+            box-shadow: inset 0 0 0 1px var(--accent);
+          }
+
           .modal {
             display: none;
             position: fixed;
@@ -474,7 +606,14 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             body { padding: 20px; }
           }
 
-          @media (max-width: 1200px) {
+          @media (max-width: 800px) {
+            body { padding: 12px; }
+            .stats { gap: 12px; flex-wrap: wrap; }
+            .week-progress {
+              grid-template-columns: repeat(26, minmax(0, 1fr));
+              margin-bottom: 24px;
+            }
+
             [data-view="list"] .list-view {
               border-collapse: separate;
               border-spacing: 0;
@@ -482,8 +621,8 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             [data-view="list"] .list-view thead tr {
               display: grid;
-              grid-template-columns: 120px minmax(280px, 1fr) minmax(180px, 240px);
-              grid-template-areas: "id task meta";
+              grid-template-columns: 96px minmax(0, 1fr);
+              grid-template-areas: "id task";
               border-bottom: 2px solid var(--border-color);
             }
 
@@ -493,7 +632,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             [data-view="list"] .list-view .list-col-id { grid-area: id; }
             [data-view="list"] .list-view .list-col-task { grid-area: task; }
-            [data-view="list"] .list-view .list-col-meta-stack { grid-area: meta; display: block; }
+            [data-view="list"] .list-view .list-col-meta-stack { display: none; }
 
             [data-view="list"] .list-view .list-col-status,
             [data-view="list"] .list-view .list-col-assignee,
@@ -503,11 +642,10 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             [data-view="list"] .list-view tbody .list-row {
               display: grid;
-              grid-template-columns: 120px minmax(280px, 1fr) minmax(180px, 240px);
+              grid-template-columns: 96px auto minmax(0, 1fr) auto;
               grid-template-areas:
-                "id task status"
-                "id task assignee"
-                "id task date";
+                "id task task task"
+                ". status assignee date";
               align-items: center;
               border-bottom: 1px solid var(--border-color);
             }
@@ -522,27 +660,44 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             [data-view="list"] .list-view tbody .list-col-task {
               grid-area: task;
+              min-width: 0;
             }
 
             [data-view="list"] .list-view tbody .list-col-status {
               grid-area: status;
-              display: block;
-              padding-top: 10px;
+              display: flex;
+              align-items: center;
+              min-height: 34px;
+              padding-top: 6px;
               padding-bottom: 6px;
+              min-width: 0;
             }
 
             [data-view="list"] .list-view tbody .list-col-assignee {
               grid-area: assignee;
-              display: block;
+              display: flex;
+              align-items: center;
+              min-height: 34px;
               padding-top: 6px;
               padding-bottom: 6px;
+              min-width: 0;
             }
 
             [data-view="list"] .list-view tbody .list-col-date {
               grid-area: date;
-              display: block;
+              display: flex;
+              align-items: center;
+              justify-content: flex-end;
+              min-height: 34px;
               padding-top: 6px;
-              padding-bottom: 10px;
+              padding-bottom: 6px;
+              min-width: 0;
+            }
+
+            [data-view="list"] .list-view th,
+            [data-view="list"] .list-view td {
+              padding-left: 10px;
+              padding-right: 10px;
             }
           }
         </style>
@@ -558,24 +713,6 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               <div class="view-switcher">
                 <button class="view-btn active" id="boardViewBtn" onclick="switchView('board')">Board</button>
                 <button class="view-btn" id="listViewBtn" onclick="switchView('list')">List</button>
-              </div>
-              <div class="status-filter-wrap" id="statusFilterWrap">
-                <button class="status-filter-btn" id="statusFilterBtn" onclick="toggleStatusFilter(event)">Status</button>
-                <div class="status-filter-dropdown" id="statusFilterDropdown" onclick="event.stopPropagation()">
-                  <div class="status-filter-title">Visible Status</div>
-                  <label class="status-filter-item">
-                    <input type="checkbox" data-filter-status="pending" checked />
-                    <span>Pending</span>
-                  </label>
-                  <label class="status-filter-item">
-                    <input type="checkbox" data-filter-status="in_progress" checked />
-                    <span>In Progress</span>
-                  </label>
-                  <label class="status-filter-item">
-                    <input type="checkbox" data-filter-status="completed" checked />
-                    <span>Done</span>
-                  </label>
-                </div>
               </div>
               <a class="nav-link" href="/stats">Stats</a>
               <a class="nav-link" href="/meetings">Meetings</a>
@@ -596,6 +733,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               </div>
             </div>
           </header>
+          <div class="week-progress" aria-label="52-week progress">${weeklyProgress}</div>
 
           <!-- Board View -->
           <div class="kanban-grid">
@@ -625,11 +763,54 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           <table class="list-view">
             <thead>
               <tr>
-                <th style="width: 120px;" class="list-col-id">ID</th>
+                <th style="width: 120px;" class="list-col-id">
+                  <span class="status-filter-label" id="idColumnLabel" onclick="setListSort(event, 'id')">ID</span>
+                </th>
                 <th class="list-col-task">Task Description</th>
-                <th style="width: 180px;" class="list-col-status status-column-trigger" id="statusColumnHeader" onclick="toggleStatusFilter(event)">Status</th>
-                <th style="width: 180px;" class="list-col-assignee">Assignee</th>
-                <th style="width: 100px;" class="list-col-date">Date</th>
+                <th style="width: 180px;" class="list-col-status status-column-trigger" id="statusColumnHeader">
+                  <div class="status-filter-wrap">
+                    <span class="status-filter-label" id="statusColumnLabel" onclick="toggleStatusFilter(event)">Status</span>
+                    <div class="status-filter-dropdown" id="statusFilterDropdown" onclick="event.stopPropagation()">
+                      <div class="status-filter-title">Visible Status</div>
+                      <label class="status-filter-item">
+                        <input type="checkbox" data-filter-status="pending" checked />
+                        <span>Pending</span>
+                      </label>
+                      <label class="status-filter-item">
+                        <input type="checkbox" data-filter-status="in_progress" checked />
+                        <span>In Progress</span>
+                      </label>
+                      <label class="status-filter-item">
+                        <input type="checkbox" data-filter-status="completed" checked />
+                        <span>Done</span>
+                      </label>
+                    </div>
+                  </div>
+                </th>
+                <th style="width: 180px;" class="list-col-assignee">
+                  <div class="status-filter-wrap">
+                    <span class="status-filter-label" id="assigneeColumnLabel" onclick="toggleAssigneeFilter(event)">Assignee</span>
+                    <div class="status-filter-dropdown" id="assigneeFilterDropdown" onclick="event.stopPropagation()">
+                      <div class="status-filter-title">Visible Assignee</div>
+                      ${assigneeFilterNames.map((name) => `
+                        <label class="status-filter-item">
+                          <input type="checkbox" data-filter-assignee="${escapeHtml(toAssigneeKey(name))}" checked />
+                          <span>${escapeHtml(name).toUpperCase()}</span>
+                        </label>
+                      `).join('')}
+                      <div class="dropdown-group" style="margin-top: 10px; padding-top: 10px;">
+                        <div class="status-filter-title" style="margin-bottom: 8px;">Sort</div>
+                        <div class="filter-sort-actions">
+                          <button type="button" class="filter-sort-btn" id="assigneeSortAscBtn" onclick="setAssigneeSort(event, 'asc')">Asc</button>
+                          <button type="button" class="filter-sort-btn" id="assigneeSortDescBtn" onclick="setAssigneeSort(event, 'desc')">Desc</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </th>
+                <th style="width: 100px;" class="list-col-date">
+                  <span class="status-filter-label" id="dateColumnLabel" onclick="setListSort(event, 'date')">Date</span>
+                </th>
                 <th class="list-col-meta-stack">
                   <div class="meta-stack-head">
                     <span>Status</span>
@@ -660,19 +841,10 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           </div>
         </div>
 
-        <!-- Edit Modal -->
-        <div class="modal" id="editModal">
-          <div class="modal-content">
-            <h2 style="text-transform: uppercase; letter-spacing: 0.1em;">Edit Task</h2>
-            <form id="editForm" onsubmit="submitEdit(event)">
-              <input type="hidden" id="editTicketId">
-              <textarea id="editDescriptionInput" name="ticketDescription" rows="4" required></textarea>
-              <div style="display: flex; gap: 16px; justify-content: flex-end;">
-                <button type="button" class="create-btn" style="background: var(--card-bg); color: white; border: 1px solid var(--border-color);" onclick="closeEditModal()">Cancel</button>
-                <button type="submit" class="create-btn">Update</button>
-              </div>
-            </form>
-          </div>
+        <div class="dropdown-menu" id="ticketContextMenu" onclick="event.stopPropagation()" style="position: fixed; left: 0; top: 0; right: auto; min-width: 280px; max-width: min(360px, calc(100vw - 24px)); z-index: 1300;"></div>
+        <div class="parent-select-hint" id="parentSelectHint" onclick="event.stopPropagation()">
+          <span id="parentSelectHintText">Select parent task</span>
+          <button type="button" class="inline-btn" onclick="cancelParentSelection()">Cancel</button>
         </div>
 
         <script>
@@ -680,11 +852,21 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           let draggedTicketId = null;
           let draggedRow = null;
           let draggedPath = '';
+          let createParentTicketId = null;
+          let inlineEditState = null;
+          let parentSelectionState = null;
           const STATUS_FILTER_STORAGE_KEY = 'ticketStatusFilter';
+          const ASSIGNEE_FILTER_STORAGE_KEY = 'ticketAssigneeFilter';
+          const LIST_SORT_STORAGE_KEY = 'ticketListSort';
           let statusFilterState = {
             pending: true,
             in_progress: true,
             completed: true,
+          };
+          let assigneeFilterState = {};
+          let listSortState = {
+            key: 'assignee',
+            order: 'asc'
           };
 
           function switchView(view) {
@@ -708,7 +890,9 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             const savedView = localStorage.getItem('ticketView');
             if (savedView) switchView(savedView);
             initializeStatusFilter();
+            initializeAssigneeFilter();
             initListDragAndDrop();
+            document.addEventListener('click', handleParentSelectionClick, true);
           });
 
           function toggleStatusFilter(event) {
@@ -742,19 +926,25 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           }
 
           function updateStatusFilterButtonLabel() {
-            const btn = document.getElementById('statusFilterBtn');
+            const btn = document.getElementById('statusColumnLabel');
             if (!btn) return;
             const activeCount = Object.values(statusFilterState).filter(Boolean).length;
             btn.textContent = 'Status (' + activeCount + ')';
           }
 
-          function applyStatusFilter() {
-            const items = document.querySelectorAll('[data-status]');
+          function applyCombinedFilters() {
+            const items = document.querySelectorAll('[data-status][data-assignee-key]');
             items.forEach((el) => {
               const status = el.dataset.status;
-              const visible = status ? Boolean(statusFilterState[status]) : true;
-              el.style.display = visible ? '' : 'none';
+              const assigneeKey = el.dataset.assigneeKey;
+              const statusVisible = status ? Boolean(statusFilterState[status]) : true;
+              const assigneeVisible = assigneeKey ? assigneeFilterState[assigneeKey] !== false : true;
+              el.style.display = statusVisible && assigneeVisible ? '' : 'none';
             });
+          }
+
+          function applyStatusFilter() {
+            applyCombinedFilters();
             updateStatusFilterButtonLabel();
           }
 
@@ -778,6 +968,171 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               });
             });
             applyStatusFilter();
+          }
+
+          function toggleAssigneeFilter(event) {
+            event.stopPropagation();
+            const dropdown = document.getElementById('assigneeFilterDropdown');
+            if (!dropdown) return;
+            dropdown.classList.toggle('active');
+          }
+
+          function loadAssigneeFilterState() {
+            const checkboxes = Array.from(document.querySelectorAll('input[data-filter-assignee]'));
+            const allKeys = checkboxes
+              .map((input) => input.dataset.filterAssignee)
+              .filter((key) => Boolean(key));
+            let parsed = {};
+            try {
+              const raw = localStorage.getItem(ASSIGNEE_FILTER_STORAGE_KEY);
+              if (raw) parsed = JSON.parse(raw);
+            } catch {
+              parsed = {};
+            }
+            assigneeFilterState = {};
+            allKeys.forEach((key) => {
+              if (!key) return;
+              assigneeFilterState[key] = parsed[key] !== false;
+            });
+          }
+
+          function saveAssigneeFilterState() {
+            localStorage.setItem(ASSIGNEE_FILTER_STORAGE_KEY, JSON.stringify(assigneeFilterState));
+          }
+
+          function loadListSortState() {
+            try {
+              const raw = localStorage.getItem(LIST_SORT_STORAGE_KEY);
+              if (!raw) return;
+              const parsed = JSON.parse(raw);
+              const key = parsed && typeof parsed.key === 'string' ? parsed.key : 'assignee';
+              const order = parsed && parsed.order === 'desc' ? 'desc' : 'asc';
+              if (key === 'id' || key === 'date' || key === 'assignee') {
+                listSortState = { key, order };
+              }
+            } catch {
+              listSortState = { key: 'assignee', order: 'asc' };
+            }
+          }
+
+          function saveListSortState() {
+            localStorage.setItem(LIST_SORT_STORAGE_KEY, JSON.stringify(listSortState));
+          }
+
+          function updateAssigneeFilterButtonLabel() {
+            const btn = document.getElementById('assigneeColumnLabel');
+            if (!btn) return;
+            const activeCount = Object.values(assigneeFilterState).filter(Boolean).length;
+            btn.textContent = 'Assignee (' + activeCount + ')';
+          }
+
+          function updateAssigneeSortButtons() {
+            const ascBtn = document.getElementById('assigneeSortAscBtn');
+            const descBtn = document.getElementById('assigneeSortDescBtn');
+            if (!ascBtn || !descBtn) return;
+            const isAssigneeSort = listSortState.key === 'assignee';
+            ascBtn.classList.toggle('active', isAssigneeSort && listSortState.order === 'asc');
+            descBtn.classList.toggle('active', isAssigneeSort && listSortState.order === 'desc');
+          }
+
+          function updateListSortHeaderLabels() {
+            const idLabel = document.getElementById('idColumnLabel');
+            const dateLabel = document.getElementById('dateColumnLabel');
+            if (idLabel) {
+              if (listSortState.key === 'id') {
+                idLabel.textContent = listSortState.order === 'asc' ? 'ID ↑' : 'ID ↓';
+              } else {
+                idLabel.textContent = 'ID';
+              }
+            }
+            if (dateLabel) {
+              if (listSortState.key === 'date') {
+                dateLabel.textContent = listSortState.order === 'asc' ? 'Date ↑' : 'Date ↓';
+              } else {
+                dateLabel.textContent = 'Date';
+              }
+            }
+          }
+
+          function applyListSort() {
+            const tbody = document.querySelector('.list-view tbody');
+            if (!tbody) return;
+            const rows = Array.from(tbody.querySelectorAll('.list-row'));
+            const factor = listSortState.order === 'desc' ? -1 : 1;
+            rows.sort((a, b) => {
+              if (listSortState.key === 'id') {
+                const aId = Number(a.dataset.ticketId || 0);
+                const bId = Number(b.dataset.ticketId || 0);
+                if (aId !== bId) return (aId - bId) * factor;
+              } else if (listSortState.key === 'date') {
+                const aTs = Number(a.dataset.createdAtTs || 0);
+                const bTs = Number(b.dataset.createdAtTs || 0);
+                if (aTs !== bTs) return (aTs - bTs) * factor;
+              } else {
+                const aName = (a.dataset.assigneeName || '').toLowerCase();
+                const bName = (b.dataset.assigneeName || '').toLowerCase();
+                const compare = aName.localeCompare(bName);
+                if (compare !== 0) return compare * factor;
+              }
+              const aPath = a.dataset.path || '';
+              const bPath = b.dataset.path || '';
+              return aPath.localeCompare(bPath);
+            });
+            rows.forEach((row) => tbody.appendChild(row));
+            updateListSortHeaderLabels();
+            updateAssigneeSortButtons();
+          }
+
+          function applyAssigneeFilter() {
+            applyCombinedFilters();
+            updateAssigneeFilterButtonLabel();
+            applyListSort();
+          }
+
+          function setAssigneeSort(event, order) {
+            event.stopPropagation();
+            listSortState = {
+              key: 'assignee',
+              order: order === 'desc' ? 'desc' : 'asc'
+            };
+            saveListSortState();
+            applyListSort();
+          }
+
+          function setListSort(event, key) {
+            event.stopPropagation();
+            if (key !== 'id' && key !== 'date') return;
+            if (listSortState.key === key) {
+              listSortState.order = listSortState.order === 'asc' ? 'desc' : 'asc';
+            } else {
+              listSortState.key = key;
+              listSortState.order = 'asc';
+            }
+            saveListSortState();
+            applyListSort();
+          }
+
+          function initializeAssigneeFilter() {
+            loadAssigneeFilterState();
+            loadListSortState();
+            const checkboxes = document.querySelectorAll('input[data-filter-assignee]');
+            checkboxes.forEach((input) => {
+              const assigneeKey = input.dataset.filterAssignee;
+              if (!assigneeKey) return;
+              input.checked = assigneeFilterState[assigneeKey] !== false;
+              input.addEventListener('change', () => {
+                assigneeFilterState[assigneeKey] = input.checked;
+                const activeCount = Object.values(assigneeFilterState).filter(Boolean).length;
+                if (activeCount === 0) {
+                  assigneeFilterState[assigneeKey] = true;
+                  input.checked = true;
+                  return;
+                }
+                saveAssigneeFilterState();
+                applyAssigneeFilter();
+              });
+            });
+            applyAssigneeFilter();
           }
 
           function clearDropTargets() {
@@ -952,6 +1307,249 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             }
           }
 
+          function positionMenuNearPointer(menu, clientX, clientY) {
+            const margin = 12;
+            menu.style.left = String(clientX) + 'px';
+            menu.style.top = String(clientY) + 'px';
+
+            const rect = menu.getBoundingClientRect();
+            let nextLeft = clientX;
+            let nextTop = clientY;
+
+            if (rect.right > window.innerWidth - margin) {
+              nextLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+            }
+            if (rect.bottom > window.innerHeight - margin) {
+              nextTop = Math.max(margin, window.innerHeight - rect.height - margin);
+            }
+
+            menu.style.left = String(nextLeft) + 'px';
+            menu.style.top = String(nextTop) + 'px';
+          }
+
+          function openTicketContextMenu(event, ticketId, _currentDesc) {
+            if (parentSelectionState) return;
+            event.stopPropagation();
+            const menu = document.getElementById('ticketContextMenu');
+            if (!menu) return;
+
+            if (currentDropdown && currentDropdown !== menu) {
+              currentDropdown.classList.remove('active');
+            }
+
+            menu.dataset.ticketId = String(ticketId);
+            menu.innerHTML = \`
+              <div class="dropdown-item" onclick="startInlineTaskEdit(event, \${ticketId})">Edit Description</div>
+              <div class="dropdown-group">
+                <div class="dropdown-item" onclick="openCreateModal(\${ticketId})">└ Add Subtask</div>
+                <div class="dropdown-item" onclick="selectParentTicket(\${ticketId})">Choose Parent Task ┓</div>
+              </div>
+              <div class="dropdown-group">
+                <div class="dropdown-item" onclick="moveToTopLevel(\${ticketId})">Move to Top-Level</div>
+              </div>
+              <div class="dropdown-group">
+                <div class="dropdown-item danger" onclick="deleteTicket(\${ticketId})">Delete Task</div>
+              </div>
+            \`;
+
+            menu.classList.add('active');
+            currentDropdown = menu;
+            positionMenuNearPointer(menu, event.clientX, event.clientY);
+          }
+
+          function closeContextMenu() {
+            if (currentDropdown) {
+              currentDropdown.classList.remove('active');
+              currentDropdown = null;
+            }
+          }
+
+          function getAllTicketElements() {
+            return Array.from(document.querySelectorAll('[data-ticket-id]'));
+          }
+
+          function updateParentSelectionVisuals() {
+            const allEls = getAllTicketElements();
+            allEls.forEach((el) => {
+              el.classList.remove('parent-select-source', 'parent-select-candidate', 'parent-select-disabled');
+            });
+
+            if (!parentSelectionState) {
+              document.body.classList.remove('parent-select-active');
+              const hint = document.getElementById('parentSelectHint');
+              if (hint) hint.classList.remove('active');
+              return;
+            }
+
+            document.body.classList.add('parent-select-active');
+            allEls.forEach((el) => {
+              const ticketId = Number(el.dataset.ticketId);
+              if (!Number.isInteger(ticketId)) return;
+              if (ticketId === parentSelectionState.sourceId) {
+                el.classList.add('parent-select-source');
+                return;
+              }
+              if (parentSelectionState.candidateIds.has(ticketId)) {
+                el.classList.add('parent-select-candidate');
+                return;
+              }
+              el.classList.add('parent-select-disabled');
+            });
+
+            const hint = document.getElementById('parentSelectHint');
+            const hintText = document.getElementById('parentSelectHintText');
+            if (hintText) {
+              hintText.textContent = 'Choose parent task by clicking one of the highlighted items';
+            }
+            if (hint) hint.classList.add('active');
+          }
+
+          function cancelParentSelection() {
+            parentSelectionState = null;
+            updateParentSelectionVisuals();
+          }
+
+          async function handleParentSelectionClick(event) {
+            if (!parentSelectionState || parentSelectionState.isSubmitting) return;
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+
+            if (target.closest('#parentSelectHint')) return;
+
+            const ticketEl = target.closest('[data-ticket-id]');
+            if (!ticketEl) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
+
+            const selectedId = Number(ticketEl.dataset.ticketId);
+            if (!Number.isInteger(selectedId)) return;
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!parentSelectionState.candidateIds.has(selectedId)) {
+              return;
+            }
+
+            parentSelectionState.isSubmitting = true;
+            await updateHierarchy(parentSelectionState.sourceId, selectedId);
+          }
+
+          function findVisibleTaskDesc(ticketId) {
+            const candidates = Array.from(document.querySelectorAll('[data-task-desc-id="' + ticketId + '"]'));
+            if (!candidates.length) return null;
+            const visible = candidates.find((el) => el.offsetParent !== null);
+            return visible || candidates[0];
+          }
+
+          function closeInlineTaskEdit(keepContextMenu = false) {
+            if (!inlineEditState) return;
+            const { targetEl, editorEl } = inlineEditState;
+            if (editorEl && editorEl.parentNode) {
+              editorEl.parentNode.removeChild(editorEl);
+            }
+            if (targetEl) {
+              targetEl.style.display = '';
+            }
+            inlineEditState = null;
+            if (!keepContextMenu) {
+              closeContextMenu();
+            }
+          }
+
+          async function saveInlineTaskEdit(ticketId) {
+            if (!inlineEditState) return;
+            const input = inlineEditState.editorEl.querySelector('textarea');
+            if (!input) return;
+            const description = input.value.trim();
+            if (!description) {
+              alert('업무 내용을 입력해주세요');
+              input.focus();
+              return;
+            }
+
+            const response = await fetch(\`/api/tickets/\${ticketId}/description\`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ description })
+            });
+
+            if (!response.ok) {
+              const data = await response.json().catch(() => ({ error: '업무 내용 변경 실패' }));
+              alert(data.error || '업무 내용 변경 실패');
+              return;
+            }
+
+            document.querySelectorAll('[data-task-desc-id="' + ticketId + '"]').forEach((el) => {
+              el.textContent = description;
+            });
+            closeInlineTaskEdit();
+          }
+
+          function startInlineTaskEdit(event, ticketId) {
+            event.stopPropagation();
+            closeContextMenu();
+            closeInlineTaskEdit(true);
+
+            const targetEl = findVisibleTaskDesc(ticketId);
+            if (!targetEl || !targetEl.parentNode) return;
+
+            const originalText = (targetEl.textContent || '').trim();
+            targetEl.style.display = 'none';
+
+            const editor = document.createElement('div');
+            editor.className = 'task-desc-inline-edit';
+            editor.innerHTML = \`
+              <textarea rows="3"></textarea>
+              <div class="task-desc-inline-actions">
+                <button type="button" class="inline-btn" data-action="cancel">Cancel</button>
+                <button type="button" class="inline-btn primary" data-action="save">Save</button>
+              </div>
+            \`;
+            const textarea = editor.querySelector('textarea');
+            if (textarea) {
+              textarea.value = originalText;
+            }
+
+            editor.addEventListener('click', (evt) => evt.stopPropagation());
+            editor.addEventListener('keydown', (evt) => {
+              if (evt.key === 'Escape') {
+                evt.preventDefault();
+                closeInlineTaskEdit();
+                return;
+              }
+              if (evt.key === 'Enter' && (evt.ctrlKey || evt.metaKey)) {
+                evt.preventDefault();
+                saveInlineTaskEdit(ticketId);
+              }
+            });
+
+            const cancelBtn = editor.querySelector('[data-action="cancel"]');
+            const saveBtn = editor.querySelector('[data-action="save"]');
+            if (cancelBtn) {
+              cancelBtn.addEventListener('click', (evt) => {
+                evt.preventDefault();
+                closeInlineTaskEdit();
+              });
+            }
+            if (saveBtn) {
+              saveBtn.addEventListener('click', (evt) => {
+                evt.preventDefault();
+                saveInlineTaskEdit(ticketId);
+              });
+            }
+
+            targetEl.parentNode.insertBefore(editor, targetEl.nextSibling);
+            inlineEditState = { ticketId, targetEl, editorEl: editor };
+
+            if (textarea) {
+              textarea.focus();
+              textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+            }
+          }
+
           async function updateStatus(ticketId, status) {
             const response = await fetch(\`/api/tickets/\${ticketId}/status\`, {
               method: 'PATCH',
@@ -959,6 +1557,71 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               body: JSON.stringify({ status })
             });
             if (response.ok) window.location.reload();
+          }
+
+          async function updateHierarchy(ticketId, parentTicketId) {
+            const response = await fetch(\`/api/tickets/\${ticketId}/hierarchy\`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ parent_ticket_id: parentTicketId })
+            });
+            if (response.ok) {
+              window.location.reload();
+              return;
+            }
+            const data = await response.json().catch(() => ({ error: '계층 변경 실패' }));
+            if (parentSelectionState) {
+              parentSelectionState.isSubmitting = false;
+            }
+            alert(data.error || '계층 변경 실패');
+          }
+
+          async function moveToTopLevel(ticketId) {
+            closeContextMenu();
+            await updateHierarchy(ticketId, null);
+          }
+
+          function getCurrentTicketPath(ticketId) {
+            const row = document.querySelector('.list-row[data-ticket-id="' + ticketId + '"]');
+            return row ? (row.dataset.path || '') : '';
+          }
+
+          function getSelectableParentCandidates(ticketId) {
+            const rows = Array.from(document.querySelectorAll('.list-row[data-ticket-id]'));
+            const currentPath = getCurrentTicketPath(ticketId);
+
+            return rows
+              .map((row) => {
+                const id = Number(row.dataset.ticketId);
+                const path = row.dataset.path || '';
+                const idCell = row.querySelector('.list-col-id');
+                const desc = row.querySelector('[data-task-desc-id="' + id + '"]');
+                return {
+                  id,
+                  path,
+                  label: ((idCell ? idCell.textContent : '') || '').trim(),
+                  description: ((desc ? desc.textContent : '') || '').trim()
+                };
+              })
+              .filter((item) => Number.isInteger(item.id))
+              .filter((item) => item.id !== ticketId)
+              .filter((item) => !isDescendantPath(item.path, currentPath));
+          }
+
+          async function selectParentTicket(ticketId) {
+            closeContextMenu();
+            closeInlineTaskEdit(true);
+            const candidates = getSelectableParentCandidates(ticketId);
+            if (!candidates.length) {
+              alert('선택 가능한 상위 티켓이 없습니다.');
+              return;
+            }
+            parentSelectionState = {
+              sourceId: ticketId,
+              candidateIds: new Set(candidates.map((item) => item.id)),
+              isSubmitting: false,
+            };
+            updateParentSelectionVisuals();
           }
 
           async function updateAssignee(ticketId, userId, userName) {
@@ -978,18 +1641,23 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (response.ok) window.location.reload();
           }
 
-          function openCreateModal() { document.getElementById('createModal').classList.add('active'); }
-          function closeCreateModal() { document.getElementById('createModal').classList.remove('active'); }
-
-          function openEditModal(ticketId, description) {
-            document.getElementById('editTicketId').value = ticketId;
-            document.getElementById('editDescriptionInput').value = description;
-            document.getElementById('editModal').classList.add('active');
+          function openCreateModal(parentTicketId = null) {
+            createParentTicketId = Number.isInteger(parentTicketId) ? parentTicketId : null;
+            closeContextMenu();
+            const modal = document.getElementById('createModal');
+            if (!modal) return;
+            const heading = modal.querySelector('h2');
+            if (heading) {
+              heading.textContent = createParentTicketId ? 'Create Subtask' : 'Create Task';
+            }
+            modal.classList.add('active');
           }
-          function closeEditModal() { document.getElementById('editModal').classList.remove('active'); }
 
-          function editTicketDescription(ticketId, currentDesc) {
-            openEditModal(ticketId, currentDesc);
+          function closeCreateModal() {
+            createParentTicketId = null;
+            const modal = document.getElementById('createModal');
+            if (!modal) return;
+            modal.classList.remove('active');
           }
 
           async function createTicket(event) {
@@ -998,32 +1666,24 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             const response = await fetch('/api/tickets', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ description })
-            });
-            if (response.ok) window.location.reload();
-          }
-
-          async function submitEdit(event) {
-            event.preventDefault();
-            const ticketId = document.getElementById('editTicketId').value;
-            const description = document.getElementById('editDescriptionInput').value;
-            
-            const response = await fetch(\`/api/tickets/\${ticketId}/description\`, {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ description })
+              body: JSON.stringify({
+                description,
+                parent_ticket_id: createParentTicketId
+              })
             });
             if (response.ok) window.location.reload();
           }
 
           document.addEventListener('click', () => {
-            if (currentDropdown) {
-              currentDropdown.classList.remove('active');
-              currentDropdown = null;
-            }
+            closeContextMenu();
+            closeInlineTaskEdit(true);
             const statusDropdown = document.getElementById('statusFilterDropdown');
             if (statusDropdown) {
               statusDropdown.classList.remove('active');
+            }
+            const assigneeDropdown = document.getElementById('assigneeFilterDropdown');
+            if (assigneeDropdown) {
+              assigneeDropdown.classList.remove('active');
             }
           });
 
@@ -1031,14 +1691,16 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (event.key !== 'Escape') return;
 
             const createModal = document.getElementById('createModal');
-            const editModal = document.getElementById('editModal');
 
             if (createModal && createModal.classList.contains('active')) {
               closeCreateModal();
             }
-            if (editModal && editModal.classList.contains('active')) {
-              closeEditModal();
+            if (parentSelectionState) {
+              cancelParentSelection();
+              return;
             }
+            closeContextMenu();
+            closeInlineTaskEdit(true);
           });
         </script>
       </body>
@@ -1051,8 +1713,10 @@ function renderColumnCards(tickets: TicketItem[], status: string, users: UserIte
     .filter(t => t.status === status)
     .map(t => {
       const escapeDesc = escapeHtml(t.ticket_description).replace(/'/g, "\\'");
+      const assigneeName = t.assignee_name || t.user_name || 'Unassigned';
+      const assigneeKey = toAssigneeKey(assigneeName);
       return `
-        <div class="ticket-card" data-status="${t.status}" onclick="editTicketDescription(${t.id}, '${escapeDesc}')">
+        <div class="ticket-card" data-status="${t.status}" data-assignee-key="${escapeHtml(assigneeKey)}" data-ticket-id="${t.id}" onclick="openTicketContextMenu(event, ${t.id}, '${escapeDesc}')">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <span class="id-tag">${escapeHtml(t.ticket_title)}</span>
             <div style="position: relative;">
@@ -1067,7 +1731,7 @@ function renderColumnCards(tickets: TicketItem[], status: string, users: UserIte
               </div>
             </div>
           </div>
-          <div class="ticket-desc">${escapeHtml(t.ticket_description)}</div>
+          <div class="ticket-desc" data-task-desc-id="${t.id}" onclick="event.stopPropagation()">${escapeHtml(t.ticket_description)}</div>
           
           <div class="card-footer">
             <div style="position: relative;">
@@ -1123,16 +1787,19 @@ function renderListRow(t: TicketItem, users: UserItem[], depth: number, path: nu
   const escapeDesc = escapeHtml(t.ticket_description).replace(/'/g, "\\'");
   const leftIndent = depth * 26;
   const branchMark = depth > 0 ? '└' : '';
+  const assigneeName = t.assignee_name || t.user_name || 'Unassigned';
+  const assigneeKey = toAssigneeKey(assigneeName);
+  const createdAtTs = new Date(t.created_at).getTime();
 
   return `
-    <tr class="list-row" draggable="true" data-ticket-id="${t.id}" data-path="${path.join('.')}" data-status="${t.status}">
+    <tr class="list-row" draggable="true" data-ticket-id="${t.id}" data-path="${path.join('.')}" data-status="${t.status}" data-assignee-key="${escapeHtml(assigneeKey)}" data-assignee-name="${escapeHtml(assigneeName)}" data-created-at-ts="${Number.isFinite(createdAtTs) ? createdAtTs : 0}">
       <td class="list-col-id" style="font-weight: 700; color: var(--text-secondary); font-size: 11px; letter-spacing: 0.05em;">
-        <span class="drag-handle">⋮⋮</span>${escapeHtml(t.ticket_title)}
+        ${escapeHtml(t.ticket_title)}
       </td>
       <td class="list-col-task">
         <div class="task-cell" style="padding-left: ${leftIndent}px;">
           <span class="task-branch">${branchMark}</span>
-          <span style="cursor: pointer;" onclick="editTicketDescription(${t.id}, '${escapeDesc}')">${escapeHtml(t.ticket_description)}</span>
+          <span data-task-desc-id="${t.id}" style="cursor: pointer;" onclick="openTicketContextMenu(event, ${t.id}, '${escapeDesc}')">${escapeHtml(t.ticket_description)}</span>
         </div>
       </td>
       <td class="list-col-status">
@@ -1166,6 +1833,49 @@ function renderListRow(t: TicketItem, users: UserItem[], depth: number, path: nu
   `;
 }
 
+function getIsoWeekInfo(date: Date): { week: number; year: number } {
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayNum);
+  const isoYear = utcDate.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((utcDate.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return { week: Math.min(week, 52), year: isoYear };
+}
+
+function renderWeekProgress(tickets: TicketItem[]): string {
+  const nowInfo = getIsoWeekInfo(new Date());
+  const createdByWeek = new Map<number, number>();
+  const completedByWeek = new Map<number, number>();
+
+  for (const ticket of tickets) {
+    const createdInfo = getIsoWeekInfo(new Date(ticket.created_at));
+    if (createdInfo.year === nowInfo.year) {
+      createdByWeek.set(createdInfo.week, (createdByWeek.get(createdInfo.week) || 0) + 1);
+    }
+
+    if (ticket.completed_at) {
+      const completedInfo = getIsoWeekInfo(new Date(ticket.completed_at));
+      if (completedInfo.year === nowInfo.year) {
+        completedByWeek.set(completedInfo.week, (completedByWeek.get(completedInfo.week) || 0) + 1);
+      }
+    }
+  }
+
+  const cells: string[] = [];
+  for (let week = 1; week <= 52; week += 1) {
+    const createdCount = createdByWeek.get(week) || 0;
+    const completedCount = completedByWeek.get(week) || 0;
+    const tooltip = `${nowInfo.year}년 ${week}주차 | 생성 ${createdCount} | 완료 ${completedCount}`;
+    const filled = week <= nowInfo.week;
+    cells.push(
+      `<span class="week-cell ${filled ? 'filled' : 'empty'}" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${filled ? '■' : '□'}</span>`
+    );
+  }
+
+  return cells.join('');
+}
+
 function escapeHtml(text: string): string {
   if (!text) return '';
   const map: { [key: string]: string } = {
@@ -1176,6 +1886,13 @@ function escapeHtml(text: string): string {
     "'": '&#039;'
   };
   return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+function toAssigneeKey(name: string): string {
+  return String(name || 'unassigned')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_');
 }
 
 function formatDate(dateStr: string | null): string {

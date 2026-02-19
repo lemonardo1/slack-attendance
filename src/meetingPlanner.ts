@@ -4,7 +4,7 @@ type MeetingWindow = {
   endHour: number;
 };
 
-export function renderMeetingHomePage(): string {
+export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
   return `
 <!DOCTYPE html>
 <html lang="ko">
@@ -69,6 +69,11 @@ export function renderMeetingHomePage(): string {
         margin-bottom: 8px;
       }
       .inline-actions { display: flex; gap: 8px; }
+      .ai-help { color: var(--sub); font-size: 12px; margin-top: 6px; line-height: 1.4; }
+      .btn:disabled {
+        cursor: not-allowed;
+        opacity: 0.45;
+      }
       .btn {
         cursor: pointer;
         font-weight: 700;
@@ -119,6 +124,10 @@ export function renderMeetingHomePage(): string {
             <div class="row">
               <label for="title">회의 제목</label>
               <input id="title" name="title" type="text" required placeholder="예: 프론트 주간 스탠드업" />
+              <div class="inline-actions">
+                <button type="button" class="btn btn-ghost" id="generateByAiBtn" ${isAiScheduleEnabled ? '' : 'disabled'}>AI로 일정 생성하기</button>
+              </div>
+              <p class="ai-help" id="aiHelp">${isAiScheduleEnabled ? '회의 주제를 대충 입력하고 버튼을 누르면 권장 시간대/회의 시간을 자동으로 채워줍니다.' : 'AI 일정 생성은 로그인 후 사용할 수 있습니다. /stats에서 로그인해주세요.'}</p>
             </div>
             <div class="row">
               <label for="duration">회의 시간</label>
@@ -170,6 +179,9 @@ export function renderMeetingHomePage(): string {
       const windowTemplate = document.getElementById('windowTemplate');
       const addWindowBtn = document.getElementById('addWindowBtn');
       const createForm = document.getElementById('createForm');
+      const generateByAiBtn = document.getElementById('generateByAiBtn');
+      const aiHelp = document.getElementById('aiHelp');
+      const isAiScheduleEnabled = ${isAiScheduleEnabled ? 'true' : 'false'};
 
       function fillHourOptions(selectEl, selected) {
         selectEl.innerHTML = '';
@@ -208,6 +220,11 @@ export function renderMeetingHomePage(): string {
           windows.push({ day, startHour, endHour });
         });
         return windows;
+      }
+
+      function setWindows(windows) {
+        windowsEl.innerHTML = '';
+        windows.forEach((w) => addWindowRow(Number(w.day), Number(w.startHour), Number(w.endHour)));
       }
 
       async function loadMeetings() {
@@ -265,6 +282,60 @@ export function renderMeetingHomePage(): string {
           return;
         }
         location.href = '/meetings/' + data.meeting_id;
+      });
+
+      generateByAiBtn.addEventListener('click', async () => {
+        if (!isAiScheduleEnabled) {
+          alert('AI 일정 생성은 로그인 후 사용할 수 있습니다. /stats에서 로그인해주세요.');
+          return;
+        }
+
+        const titleInput = document.getElementById('title');
+        const title = titleInput.value.trim();
+        if (!title) {
+          alert('먼저 회의 제목에 대략적인 회의 내용을 입력해주세요.');
+          titleInput.focus();
+          return;
+        }
+
+        const prevText = generateByAiBtn.textContent;
+        generateByAiBtn.disabled = true;
+        generateByAiBtn.textContent = '생성 중...';
+        aiHelp.textContent = 'Gemini가 회의 시간대를 추천하는 중입니다.';
+
+        try {
+          const res = await fetch('/api/meetings/ai-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title }),
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || 'AI 일정 생성에 실패했습니다.');
+            aiHelp.textContent = 'AI 일정 생성에 실패했습니다. 제목을 조금 더 구체적으로 입력해보세요.';
+            return;
+          }
+
+          if (data.title) {
+            titleInput.value = String(data.title);
+          }
+          if (data.duration_minutes) {
+            document.getElementById('duration').value = String(data.duration_minutes);
+          }
+          if (Array.isArray(data.windows) && data.windows.length) {
+            setWindows(data.windows);
+          }
+          const summary = Array.isArray(data.windows)
+            ? data.windows.map((w) => DAY_LABELS[w.day] + ' ' + w.startHour + '-' + w.endHour).join(', ')
+            : '';
+          aiHelp.textContent = '추천 반영 완료: ' + summary;
+        } catch (error) {
+          aiHelp.textContent = 'AI 일정 생성 중 오류가 발생했습니다.';
+          alert('AI 일정 생성 중 오류가 발생했습니다.');
+        } finally {
+          generateByAiBtn.disabled = !isAiScheduleEnabled;
+          generateByAiBtn.textContent = prevText;
+        }
       });
 
       addWindowRow(1, 9, 22);
