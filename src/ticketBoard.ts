@@ -485,6 +485,13 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             display: block;
           }
 
+          .card-id-row {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+          }
+
           .ticket-desc {
             font-size: 14px;
             line-height: 1.5;
@@ -1420,11 +1427,11 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             syncSelectAllCheckboxState();
           }
 
-          function getVisibleRowSelectionCheckboxes() {
-            return Array.from(document.querySelectorAll('.ticket-row-select')).filter((checkbox) => {
+          function getVisibleSelectionCheckboxes() {
+            return Array.from(document.querySelectorAll('.ticket-select-checkbox[data-ticket-select-id]')).filter((checkbox) => {
               if (!(checkbox instanceof HTMLInputElement)) return false;
-              const row = checkbox.closest('.list-row');
-              return Boolean(row && row instanceof HTMLElement && row.offsetParent !== null);
+              const container = checkbox.closest('[data-ticket-id]');
+              return Boolean(container && container instanceof HTMLElement && container.offsetParent !== null);
             });
           }
 
@@ -1439,7 +1446,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           function syncSelectAllCheckboxState() {
             const selectAll = document.getElementById('selectAllTicketsCheckbox');
             if (!(selectAll instanceof HTMLInputElement)) return;
-            const visibleCheckboxes = getVisibleRowSelectionCheckboxes();
+            const visibleCheckboxes = getVisibleSelectionCheckboxes();
             if (!visibleCheckboxes.length) {
               selectAll.checked = false;
               selectAll.indeterminate = false;
@@ -1452,19 +1459,32 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
           function initializeTicketSelection() {
             selectedTicketIds = new Set();
+            document.querySelectorAll('.ticket-select-checkbox[data-ticket-select-id]').forEach((checkbox) => {
+              if (!(checkbox instanceof HTMLInputElement)) return;
+              checkbox.checked = false;
+            });
             updateBulkDeleteButtonState();
             syncSelectAllCheckboxState();
+          }
+
+          function setTicketSelection(ticketId, isSelected) {
+            if (!Number.isInteger(ticketId)) return;
+            if (isSelected) {
+              selectedTicketIds.add(ticketId);
+            } else {
+              selectedTicketIds.delete(ticketId);
+            }
+            document.querySelectorAll('.ticket-select-checkbox[data-ticket-select-id="' + ticketId + '"]').forEach((checkbox) => {
+              if (!(checkbox instanceof HTMLInputElement)) return;
+              checkbox.checked = isSelected;
+            });
           }
 
           function toggleTicketSelection(event, ticketId) {
             event.stopPropagation();
             const target = event.currentTarget;
             if (!(target instanceof HTMLInputElement)) return;
-            if (target.checked) {
-              selectedTicketIds.add(ticketId);
-            } else {
-              selectedTicketIds.delete(ticketId);
-            }
+            setTicketSelection(ticketId, target.checked);
             updateBulkDeleteButtonState();
             syncSelectAllCheckboxState();
           }
@@ -1473,17 +1493,12 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             event.stopPropagation();
             const target = event.currentTarget;
             if (!(target instanceof HTMLInputElement)) return;
-            const visibleCheckboxes = getVisibleRowSelectionCheckboxes();
+            const visibleCheckboxes = getVisibleSelectionCheckboxes();
             visibleCheckboxes.forEach((checkbox) => {
-              checkbox.checked = target.checked;
               const rawId = checkbox.dataset.ticketSelectId;
               const ticketId = Number(rawId);
               if (!Number.isInteger(ticketId)) return;
-              if (target.checked) {
-                selectedTicketIds.add(ticketId);
-              } else {
-                selectedTicketIds.delete(ticketId);
-              }
+              setTicketSelection(ticketId, target.checked);
             });
             updateBulkDeleteButtonState();
             syncSelectAllCheckboxState();
@@ -2390,7 +2405,17 @@ function renderColumnCards(tickets: TicketItem[], status: string, users: UserIte
       return `
         <div class="ticket-card" data-status="${t.status}" data-assignee-key="${escapeHtml(assigneeKey)}" data-ticket-id="${t.id}" onclick="openTicketContextMenu(event, ${t.id}, '${escapeDesc}')">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <span class="id-tag">${escapeHtml(t.ticket_title)}</span>
+            <div class="card-id-row">
+              <input
+                type="checkbox"
+                class="ticket-select-checkbox ticket-board-select"
+                data-ticket-select-id="${t.id}"
+                aria-label="Select ${escapeHtml(t.ticket_title)}"
+                onclick="event.stopPropagation()"
+                onchange="toggleTicketSelection(event, ${t.id})"
+              />
+              <span class="id-tag" style="margin-bottom: 0;">${escapeHtml(t.ticket_title)}</span>
+            </div>
             <div style="position: relative;">
               <span style="font-size: 10px; cursor: pointer; color: var(--text-secondary); font-weight: 700; border: 1px solid var(--border-color); padding: 2px 6px;" onclick="toggleDropdown(event)">MENU</span>
               <div class="dropdown-menu">
