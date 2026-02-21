@@ -251,6 +251,41 @@ export function renderWeeklyStatsPage(
           .logout-btn:hover {
             border-color: #ff9f9f;
           }
+          .profile-panel {
+            margin-bottom: 14px;
+            padding: 14px;
+            border: 1px solid var(--border-color);
+            background: var(--panel);
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+          }
+          .profile-label {
+            color: var(--text-secondary);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            min-width: 96px;
+          }
+          .profile-input {
+            flex: 1;
+            min-width: 220px;
+            background: #0b0b0b;
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 9px 10px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+          }
+          .profile-status {
+            font-size: 11px;
+            color: var(--text-secondary);
+            min-height: 14px;
+            width: 100%;
+          }
           .summary-grid {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -435,6 +470,18 @@ export function renderWeeklyStatsPage(
               <a href="/stats/logout" class="action-btn logout-btn">Logout</a>
             </div>
           </header>
+          <section class="profile-panel">
+            <span class="profile-label">My Assignee Name</span>
+            <input
+              id="profileDisplayNameInput"
+              class="profile-input"
+              type="text"
+              maxlength="80"
+              placeholder="NAME USED FOR ASSIGN TO ME"
+            />
+            <button class="action-btn" type="button" onclick="saveMyDisplayName()">Save Name</button>
+            <span id="profileStatus" class="profile-status"></span>
+          </section>
           <section class="summary-grid">
             <article class="summary-item">
               <p class="summary-label">Members</p>
@@ -556,6 +603,50 @@ export function renderWeeklyStatsPage(
             
             window.location.search = params.toString();
           }
+
+          function setProfileStatus(message) {
+            const el = document.getElementById('profileStatus');
+            if (el) el.textContent = String(message || '');
+          }
+
+          async function loadMyProfile() {
+            try {
+              const response = await fetch('/api/auth/profile', { credentials: 'same-origin' });
+              if (!response.ok) return;
+              const data = await response.json();
+              const input = document.getElementById('profileDisplayNameInput');
+              if (!(input instanceof HTMLInputElement)) return;
+              input.value = String(data.display_name || '').trim();
+            } catch (_) {
+              // ignore
+            }
+          }
+
+          async function saveMyDisplayName() {
+            const input = document.getElementById('profileDisplayNameInput');
+            if (!(input instanceof HTMLInputElement)) return;
+            const displayName = input.value.trim();
+            setProfileStatus('Saving...');
+            try {
+              const response = await fetch('/api/auth/profile', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ display_name: displayName })
+              });
+              const data = await response.json().catch(() => ({}));
+              if (!response.ok) {
+                setProfileStatus(data.error || 'Save failed');
+                return;
+              }
+              input.value = String(data.display_name || '').trim();
+              setProfileStatus('Saved');
+            } catch (_) {
+              setProfileStatus('Save failed');
+            }
+          }
+
+          window.addEventListener('DOMContentLoaded', loadMyProfile);
         </script>
         ${renderFloatingAuthButton()}
       </body>

@@ -165,9 +165,25 @@ async function ensureSessionProfilesTable(env: Env): Promise<void> {
   await env.DB.prepare(`
     CREATE TABLE IF NOT EXISTS session_profiles (
       token TEXT PRIMARY KEY,
-      initials TEXT NOT NULL
+      initials TEXT NOT NULL,
+      email TEXT,
+      display_name TEXT,
+      provider TEXT,
+      provider_user_id TEXT
     )
   `).run();
+  // Keep local/dev compatible when DB was created before new columns existed.
+  const addColumnIfMissing = async (column: string, columnType: string) => {
+    try {
+      await env.DB.prepare(`ALTER TABLE session_profiles ADD COLUMN ${column} ${columnType}`).run();
+    } catch {
+      // Ignore duplicate-column errors.
+    }
+  };
+  await addColumnIfMissing('email', 'TEXT');
+  await addColumnIfMissing('display_name', 'TEXT');
+  await addColumnIfMissing('provider', 'TEXT');
+  await addColumnIfMissing('provider_user_id', 'TEXT');
 }
 
 function normalizeInitials(input: string | null | undefined): string {
@@ -193,20 +209,80 @@ function deriveInitialsFromIdentity(identity: string): string {
   return SESSION_DEFAULT_INITIALS;
 }
 
-async function createSession(env: Env, token: string, initials: string = SESSION_DEFAULT_INITIALS): Promise<void> {
+type SessionProfileInput = {
+  initials?: string;
+  email?: string | null;
+  displayName?: string | null;
+  provider?: string | null;
+  providerUserId?: string | null;
+};
+
+type AuthenticatedSession = {
+  token: string;
+  initials: string;
+  email: string | null;
+  displayName: string | null;
+  provider: string | null;
+  providerUserId: string | null;
+};
+
+type SessionAuthState = {
+  authenticated: boolean;
+  initials: string | null;
+  email: string | null;
+  display_name: string | null;
+};
+
+function normalizeDisplayName(input: string | null | undefined): string {
+  return String(input || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+}
+
+function buildAuthAssigneeId(session: AuthenticatedSession): string {
+  const provider = String(session.provider || 'web').trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 24) || 'web';
+  const providerUserId = String(session.providerUserId || '').trim();
+  if (providerUserId) {
+    const slug = providerUserId.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 64);
+    return `${provider}_${slug || 'user'}`;
+  }
+  const email = String(session.email || '').toLowerCase();
+  const emailSlug = email.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 64);
+  return `${provider}_${emailSlug || 'user'}`;
+}
+
+function deriveAssigneeNameFromSession(session: AuthenticatedSession): string {
+  const preferredName = normalizeDisplayName(session.displayName);
+  if (preferredName) return preferredName;
+  const email = String(session.email || '').trim();
+  if (email) {
+    return email.split('@')[0].slice(0, 80) || 'Me';
+  }
+  return 'Me';
+}
+
+async function createSession(env: Env, token: string, profile?: SessionProfileInput): Promise<void> {
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + SESSION_TTL_SECONDS;
   await ensureSessionsTable(env);
   await ensureSessionProfilesTable(env);
+  const initials = normalizeInitials(profile?.initials);
+  const email = String(profile?.email || '').trim() || null;
+  const displayName = normalizeDisplayName(profile?.displayName) || null;
+  const provider = String(profile?.provider || '').trim() || null;
+  const providerUserId = String(profile?.providerUserId || '').trim() || null;
   await env.DB.prepare(`
     INSERT INTO sessions (token, created_at, expires_at)
     VALUES (?, ?, ?)
   `).bind(token, now, expiresAt).run();
   await env.DB.prepare(`
-    INSERT INTO session_profiles (token, initials)
-    VALUES (?, ?)
-    ON CONFLICT(token) DO UPDATE SET initials = excluded.initials
-  `).bind(token, normalizeInitials(initials)).run();
+    INSERT INTO session_profiles (token, initials, email, display_name, provider, provider_user_id)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(token) DO UPDATE SET
+      initials = excluded.initials,
+      email = excluded.email,
+      display_name = excluded.display_name,
+      provider = excluded.provider,
+      provider_user_id = excluded.provider_user_id
+  `).bind(token, initials, email, displayName, provider, providerUserId).run();
   await env.DB.prepare(`
     DELETE FROM sessions
     WHERE expires_at <= ?
@@ -251,37 +327,63 @@ async function isAuthenticated(request: Request, env: Env): Promise<boolean> {
   }
 }
 
-async function getSessionAuthState(request: Request, env: Env): Promise<{ authenticated: boolean; initials: string | null }> {
+async function getAuthenticatedSession(request: Request, env: Env): Promise<AuthenticatedSession | null> {
   const cookieHeader = request.headers.get('Cookie');
   const sessionToken = getSessionFromCookie(cookieHeader);
-  if (!sessionToken) {
-    return { authenticated: false, initials: null };
-  }
+  if (!sessionToken) return null;
 
   try {
     await ensureSessionsTable(env);
     await ensureSessionProfilesTable(env);
     const now = Math.floor(Date.now() / 1000);
     const row = await env.DB.prepare(`
-      SELECT s.token AS token, p.initials AS initials
+      SELECT
+        s.token AS token,
+        p.initials AS initials,
+        p.email AS email,
+        p.display_name AS display_name,
+        p.provider AS provider,
+        p.provider_user_id AS provider_user_id
       FROM sessions s
       LEFT JOIN session_profiles p ON p.token = s.token
       WHERE s.token = ? AND s.expires_at > ?
       LIMIT 1
-    `).bind(sessionToken, now).first<{ token?: string; initials?: string }>();
+    `).bind(sessionToken, now).first<{
+      token?: string;
+      initials?: string;
+      email?: string | null;
+      display_name?: string | null;
+      provider?: string | null;
+      provider_user_id?: string | null;
+    }>();
 
-    if (!row?.token) {
-      return { authenticated: false, initials: null };
-    }
+    if (!row?.token) return null;
 
     return {
-      authenticated: true,
+      token: row.token,
       initials: normalizeInitials(row.initials),
+      email: String(row.email || '').trim() || null,
+      displayName: normalizeDisplayName(row.display_name) || null,
+      provider: String(row.provider || '').trim() || null,
+      providerUserId: String(row.provider_user_id || '').trim() || null,
     };
   } catch (error) {
     console.error('Session state lookup failed:', error);
-    return { authenticated: false, initials: null };
+    return null;
   }
+}
+
+async function getSessionAuthState(request: Request, env: Env): Promise<SessionAuthState> {
+  const session = await getAuthenticatedSession(request, env);
+  if (!session) {
+    return { authenticated: false, initials: null, email: null, display_name: null };
+  }
+  return {
+    authenticated: true,
+    initials: session.initials,
+    email: session.email,
+    display_name: session.displayName,
+  };
 }
 
 type GoogleEnvKey =
@@ -2105,7 +2207,12 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
       });
     }
 
-    const userInfo = await userInfoResponse.json() as { email?: string; verified_email?: boolean };
+    const userInfo = await userInfoResponse.json() as {
+      id?: string;
+      name?: string;
+      email?: string;
+      verified_email?: boolean;
+    };
     console.log('[GoogleAuth][Callback] Userinfo payload parsed', {
       emailSuffix: userInfo.email ? maskForLog(userInfo.email, 6) : '(missing)',
       verifiedEmail: userInfo.verified_email === true,
@@ -2140,7 +2247,13 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     }
 
     const sessionToken = generateSessionToken();
-    await createSession(env, sessionToken, deriveInitialsFromIdentity(userInfo.email));
+    await createSession(env, sessionToken, {
+      initials: deriveInitialsFromIdentity(userInfo.name || userInfo.email || ''),
+      email: userInfo.email,
+      displayName: userInfo.name || userInfo.email?.split('@')[0] || null,
+      provider: 'google',
+      providerUserId: userInfo.id || null,
+    });
     const headers = new Headers();
     headers.set('Location', '/stats');
     headers.append('Set-Cookie', createSessionCookie(sessionToken));
@@ -2209,6 +2322,117 @@ async function handleAuthSession(request: Request, env: Env): Promise<Response> 
   });
 }
 
+async function handleAuthProfile(request: Request, env: Env): Promise<Response> {
+  const session = await getAuthenticatedSession(request, env);
+  if (!session) {
+    return new Response(JSON.stringify({ error: '로그인이 필요합니다.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (request.method === 'GET') {
+    return new Response(JSON.stringify({
+      initials: session.initials,
+      email: session.email,
+      display_name: session.displayName,
+      provider: session.provider,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  if (request.method === 'PATCH') {
+    try {
+      const body = await request.json() as { display_name?: string };
+      const nextDisplayName = normalizeDisplayName(body.display_name) || null;
+      await ensureSessionProfilesTable(env);
+      await env.DB.prepare(`
+        UPDATE session_profiles
+        SET display_name = ?
+        WHERE token = ?
+      `).bind(nextDisplayName, session.token).run();
+
+      return new Response(JSON.stringify({
+        success: true,
+        display_name: nextDisplayName,
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    } catch (error) {
+      console.error('Update auth profile error:', error);
+      return new Response(JSON.stringify({ error: '이름 저장 중 오류가 발생했습니다.' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+  }
+
+  return new Response('Method not allowed', { status: 405 });
+}
+
+async function handleAssignTicketToMe(request: Request, env: Env, ticketId: number): Promise<Response> {
+  if (request.method !== 'PATCH') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
+  const session = await getAuthenticatedSession(request, env);
+  if (!session) {
+    return new Response(JSON.stringify({ error: '로그인 후 사용할 수 있습니다.' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const ticket = await env.DB.prepare(
+      "SELECT team_id FROM work_tickets WHERE id = ? LIMIT 1"
+    ).bind(ticketId).first<{ team_id: string }>();
+    if (!ticket) {
+      return new Response(JSON.stringify({ error: '티켓을 찾을 수 없습니다' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    const assigneeName = deriveAssigneeNameFromSession(session);
+    const assigneeId = buildAuthAssigneeId(session);
+
+    await env.DB.prepare(`
+      INSERT INTO users (user_id, user_name, display_name, email, team_id, role, is_active)
+      VALUES (?, ?, ?, ?, ?, 'member', 1)
+      ON CONFLICT(user_id) DO UPDATE SET
+        user_name = excluded.user_name,
+        display_name = excluded.display_name,
+        email = COALESCE(excluded.email, users.email),
+        team_id = excluded.team_id,
+        is_active = 1,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(assigneeId, assigneeName, assigneeName, session.email, ticket.team_id).run();
+
+    await env.DB.prepare(
+      "UPDATE work_tickets SET assignee_id = ?, assignee_name = ? WHERE id = ?"
+    ).bind(assigneeId, assigneeName, ticketId).run();
+
+    return new Response(JSON.stringify({
+      success: true,
+      assignee_id: assigneeId,
+      assignee_name: assigneeName,
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('Assign ticket to me error:', error);
+    return new Response(JSON.stringify({ error: '내 담당자로 설정 중 오류가 발생했습니다.' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -2269,6 +2493,10 @@ export default {
     // Session state endpoint (for floating auth button)
     if (url.pathname === '/api/auth/session') {
       return handleAuthSession(request, env);
+    }
+
+    if (url.pathname === '/api/auth/profile') {
+      return handleAuthProfile(request, env);
     }
 
     // Meeting planner home
@@ -2343,6 +2571,12 @@ export default {
     if (url.pathname.startsWith('/api/tickets/') && url.pathname.endsWith('/assignee') && request.method === 'PATCH') {
       const ticketId = parseInt(url.pathname.split('/')[3]);
       return handleUpdateTicketAssignee(request, env, ticketId);
+    }
+
+    // API: Assign ticket to currently logged-in user
+    if (url.pathname.startsWith('/api/tickets/') && url.pathname.endsWith('/assignee/me') && request.method === 'PATCH') {
+      const ticketId = parseInt(url.pathname.split('/')[3]);
+      return handleAssignTicketToMe(request, env, ticketId);
     }
 
     // API: Update ticket creator

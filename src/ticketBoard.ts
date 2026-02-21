@@ -2318,6 +2318,23 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             applyAssigneeToTicket(ticketId, nextAssigneeName);
           }
 
+          async function assignTicketToMe(event, ticketId) {
+            event.stopPropagation();
+            const response = await fetch('/api/tickets/' + ticketId + '/assignee/me', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              showNotice(data.error || 'Assign to me failed');
+              return;
+            }
+            const nextAssigneeId = String(data.assignee_id || '').trim();
+            const nextAssigneeName = String(data.assignee_name || 'Me').trim();
+            appendAssigneeOptionToMenus(nextAssigneeId, nextAssigneeName);
+            applyAssigneeToTicket(ticketId, nextAssigneeName);
+          }
+
           async function updateAssigneeFromDataset(event) {
             event.stopPropagation();
             const target = event.currentTarget;
@@ -2715,6 +2732,7 @@ function renderListRow(t: TicketItem, users: UserItem[], depth: number, path: nu
 function renderAssigneeMenuItems(ticketId: number, users: UserItem[], viewKey: 'board' | 'list'): string {
   const panelKey = `${viewKey}-${ticketId}`;
   return `
+    <div class="dropdown-item" onclick="assignTicketToMe(event, ${ticketId})">Assign to me</div>
     ${users.map((u) => `
       <div
         class="dropdown-item"
