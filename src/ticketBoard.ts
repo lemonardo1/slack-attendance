@@ -303,6 +303,33 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
           .create-btn:hover { opacity: 0.8; }
 
+          .bulk-delete-btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--card-bg);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+            height: var(--header-btn-height);
+            padding: 0 14px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: border-color 0.2s, color 0.2s;
+            line-height: 1;
+          }
+
+          .bulk-delete-btn:hover:not(:disabled) {
+            border-color: var(--accent);
+            color: var(--text-primary);
+          }
+
+          .bulk-delete-btn:disabled {
+            opacity: 0.45;
+            cursor: not-allowed;
+          }
+
           .stats { display: flex; gap: 40px; align-items: flex-end; }
           .stat-item { text-align: left; }
           .stat-item .count { font-size: 24px; font-weight: 700; display: block; }
@@ -382,6 +409,20 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             font-size: 14px;
             border-bottom: 1px solid var(--border-color);
             background: var(--bg-color);
+          }
+
+          .list-col-select {
+            text-align: center;
+            padding-left: 8px !important;
+            padding-right: 8px !important;
+          }
+
+          .ticket-select-checkbox {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+            accent-color: #ffffff;
+            cursor: pointer;
           }
 
           .list-view tr:hover td {
@@ -679,6 +720,34 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             width: 90%;
             max-width: 600px;
           }
+          .notice-toast {
+            display: none;
+            position: fixed;
+            left: 50%;
+            bottom: 18px;
+            transform: translateX(-50%);
+            z-index: 2400;
+            background: var(--card-bg);
+            border: 1px solid var(--accent);
+            color: var(--text-primary);
+            padding: 10px 14px;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            max-width: min(680px, calc(100vw - 24px));
+          }
+          .notice-toast.error {
+            border-color: #ff4444;
+          }
+          .notice-toast.active {
+            display: block;
+          }
+          .confirm-message {
+            margin-top: 12px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.5;
+          }
 
           textarea {
             width: 100%;
@@ -749,8 +818,8 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             [data-view="list"] .list-view thead tr {
               display: grid;
-              grid-template-columns: 96px minmax(0, 1fr);
-              grid-template-areas: "id task";
+              grid-template-columns: 42px 96px minmax(0, 1fr);
+              grid-template-areas: "select id task";
               border-bottom: 2px solid var(--border-color);
             }
 
@@ -758,6 +827,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               border-bottom: none;
             }
 
+            [data-view="list"] .list-view .list-col-select { grid-area: select; }
             [data-view="list"] .list-view .list-col-id { grid-area: id; }
             [data-view="list"] .list-view .list-col-task { grid-area: task; }
             [data-view="list"] .list-view .list-col-meta-stack { display: none; }
@@ -770,16 +840,20 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             [data-view="list"] .list-view tbody .list-row {
               display: grid;
-              grid-template-columns: 96px auto minmax(0, 1fr) auto;
+              grid-template-columns: 42px 96px auto minmax(0, 1fr) auto;
               grid-template-areas:
-                "id task task task"
-                ". status assignee date";
+                "select id task task task"
+                "select . status assignee date";
               align-items: center;
               border-bottom: 1px solid var(--border-color);
             }
 
             [data-view="list"] .list-view tbody td {
               border-bottom: none;
+            }
+
+            [data-view="list"] .list-view tbody .list-col-select {
+              grid-area: select;
             }
 
             [data-view="list"] .list-view tbody .list-col-id {
@@ -859,6 +933,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
                   <span class="label">Done</span>
                   <span class="count">${completedCount}</span>
                 </div>
+                <button class="bulk-delete-btn" id="bulkDeleteBtn" onclick="deleteSelectedTickets()" disabled>Delete Selected</button>
                 <button class="create-btn" onclick="openCreateModal()">New Task</button>
               </div>
             </div>
@@ -893,6 +968,16 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           <table class="list-view">
             <thead>
               <tr>
+                <th style="width: 42px;" class="list-col-select">
+                  <input
+                    type="checkbox"
+                    id="selectAllTicketsCheckbox"
+                    class="ticket-select-checkbox"
+                    aria-label="Select all tasks"
+                    onclick="event.stopPropagation()"
+                    onchange="toggleSelectAllTickets(event)"
+                  />
+                </th>
                 <th style="width: 120px;" class="list-col-id">
                   <span class="status-filter-label" id="idColumnLabel" onclick="setListSort(event, 'id')">ID</span>
                 </th>
@@ -982,12 +1067,23 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             </div>
           </div>
         </div>
+        <div class="modal" id="confirmActionModal" onclick="closeConfirmModal(false)">
+          <div class="modal-content" style="max-width: 420px;" onclick="event.stopPropagation()">
+            <h2 style="text-transform: uppercase; letter-spacing: 0.1em;">Confirm</h2>
+            <p id="confirmActionMessage" class="confirm-message">Are you sure?</p>
+            <div style="display: flex; gap: 16px; justify-content: flex-end; margin-top: 18px;">
+              <button type="button" class="create-btn" style="background: var(--card-bg); color: white; border: 1px solid var(--border-color);" onclick="closeConfirmModal(false)">Cancel</button>
+              <button type="button" class="create-btn" onclick="closeConfirmModal(true)">Confirm</button>
+            </div>
+          </div>
+        </div>
 
         <div class="dropdown-menu" id="ticketContextMenu" onclick="event.stopPropagation()" style="position: fixed; left: 0; top: 0; right: auto; min-width: 280px; max-width: min(360px, calc(100vw - 24px)); z-index: 1300;"></div>
         <div class="parent-select-hint" id="parentSelectHint" onclick="event.stopPropagation()">
           <span id="parentSelectHintText">Select parent task</span>
           <button type="button" class="inline-btn" onclick="cancelParentSelection()">Cancel</button>
         </div>
+        <div id="noticeToast" class="notice-toast" aria-live="polite"></div>
 
         <script>
           let currentDropdown = null;
@@ -1012,6 +1108,49 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             key: 'assignee',
             order: 'asc'
           };
+          let selectedTicketIds = new Set();
+          let noticeTimer = null;
+          let confirmResolver = null;
+
+          function showNotice(message, type = 'error') {
+            const toast = document.getElementById('noticeToast');
+            if (!toast) return;
+            toast.textContent = String(message || '').trim();
+            toast.classList.remove('error');
+            if (type === 'error') {
+              toast.classList.add('error');
+            }
+            toast.classList.add('active');
+            if (noticeTimer) {
+              clearTimeout(noticeTimer);
+            }
+            noticeTimer = setTimeout(() => {
+              toast.classList.remove('active');
+            }, 2600);
+          }
+
+          function closeConfirmModal(isConfirmed) {
+            const modal = document.getElementById('confirmActionModal');
+            if (modal) {
+              modal.classList.remove('active');
+            }
+            if (confirmResolver) {
+              const resolve = confirmResolver;
+              confirmResolver = null;
+              resolve(Boolean(isConfirmed));
+            }
+          }
+
+          function requestConfirm(message) {
+            const modal = document.getElementById('confirmActionModal');
+            const msg = document.getElementById('confirmActionMessage');
+            if (!modal || !msg) return Promise.resolve(false);
+            msg.textContent = String(message || 'Are you sure?');
+            modal.classList.add('active');
+            return new Promise((resolve) => {
+              confirmResolver = resolve;
+            });
+          }
 
           function switchView(view) {
             const container = document.getElementById('mainContainer');
@@ -1037,6 +1176,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             initializeStatusFilter();
             initializeAssigneeFilter();
             initListDragAndDrop();
+            initializeTicketSelection();
             document.addEventListener('click', handleParentSelectionClick, true);
           });
 
@@ -1136,6 +1276,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               const assigneeVisible = assigneeKey ? assigneeFilterState[assigneeKey] !== false : true;
               el.style.display = statusVisible && assigneeVisible ? '' : 'none';
             });
+            syncSelectAllCheckboxState();
           }
 
           function applyStatusFilter() {
@@ -1276,6 +1417,76 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             rows.forEach((row) => tbody.appendChild(row));
             updateListSortHeaderLabels();
             updateAssigneeSortButtons();
+            syncSelectAllCheckboxState();
+          }
+
+          function getVisibleRowSelectionCheckboxes() {
+            return Array.from(document.querySelectorAll('.ticket-row-select')).filter((checkbox) => {
+              if (!(checkbox instanceof HTMLInputElement)) return false;
+              const row = checkbox.closest('.list-row');
+              return Boolean(row && row instanceof HTMLElement && row.offsetParent !== null);
+            });
+          }
+
+          function updateBulkDeleteButtonState() {
+            const btn = document.getElementById('bulkDeleteBtn');
+            if (!(btn instanceof HTMLButtonElement)) return;
+            const selectedCount = selectedTicketIds.size;
+            btn.disabled = selectedCount === 0;
+            btn.textContent = selectedCount > 0 ? 'Delete Selected (' + selectedCount + ')' : 'Delete Selected';
+          }
+
+          function syncSelectAllCheckboxState() {
+            const selectAll = document.getElementById('selectAllTicketsCheckbox');
+            if (!(selectAll instanceof HTMLInputElement)) return;
+            const visibleCheckboxes = getVisibleRowSelectionCheckboxes();
+            if (!visibleCheckboxes.length) {
+              selectAll.checked = false;
+              selectAll.indeterminate = false;
+              return;
+            }
+            const checkedCount = visibleCheckboxes.filter((checkbox) => checkbox.checked).length;
+            selectAll.checked = checkedCount === visibleCheckboxes.length;
+            selectAll.indeterminate = checkedCount > 0 && checkedCount < visibleCheckboxes.length;
+          }
+
+          function initializeTicketSelection() {
+            selectedTicketIds = new Set();
+            updateBulkDeleteButtonState();
+            syncSelectAllCheckboxState();
+          }
+
+          function toggleTicketSelection(event, ticketId) {
+            event.stopPropagation();
+            const target = event.currentTarget;
+            if (!(target instanceof HTMLInputElement)) return;
+            if (target.checked) {
+              selectedTicketIds.add(ticketId);
+            } else {
+              selectedTicketIds.delete(ticketId);
+            }
+            updateBulkDeleteButtonState();
+            syncSelectAllCheckboxState();
+          }
+
+          function toggleSelectAllTickets(event) {
+            event.stopPropagation();
+            const target = event.currentTarget;
+            if (!(target instanceof HTMLInputElement)) return;
+            const visibleCheckboxes = getVisibleRowSelectionCheckboxes();
+            visibleCheckboxes.forEach((checkbox) => {
+              checkbox.checked = target.checked;
+              const rawId = checkbox.dataset.ticketSelectId;
+              const ticketId = Number(rawId);
+              if (!Number.isInteger(ticketId)) return;
+              if (target.checked) {
+                selectedTicketIds.add(ticketId);
+              } else {
+                selectedTicketIds.delete(ticketId);
+              }
+            });
+            updateBulkDeleteButtonState();
+            syncSelectAllCheckboxState();
           }
 
           function applyAssigneeFilter() {
@@ -1467,7 +1678,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
                 if (!response.ok) {
                   const data = await response.json().catch(() => ({ error: '계층 변경 실패' }));
-                  alert(data.error || '계층 변경 실패');
+                  showNotice(data.error || '계층 변경 실패');
                   window.location.reload();
                 }
               });
@@ -1683,7 +1894,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (!input) return;
             const description = input.value.trim();
             if (!description) {
-              alert('업무 내용을 입력해주세요');
+              showNotice('업무 내용을 입력해주세요');
               input.focus();
               return;
             }
@@ -1696,7 +1907,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
             if (!response.ok) {
               const data = await response.json().catch(() => ({ error: '업무 내용 변경 실패' }));
-              alert(data.error || '업무 내용 변경 실패');
+              showNotice(data.error || '업무 내용 변경 실패');
               return;
             }
 
@@ -1791,7 +2002,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (parentSelectionState) {
               parentSelectionState.isSubmitting = false;
             }
-            alert(data.error || '계층 변경 실패');
+            showNotice(data.error || '계층 변경 실패');
           }
 
           async function moveToTopLevel(ticketId) {
@@ -1831,7 +2042,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             closeInlineTaskEdit(true);
             const candidates = getSelectableParentCandidates(ticketId);
             if (!candidates.length) {
-              alert('선택 가능한 상위 티켓이 없습니다.');
+              showNotice('선택 가능한 상위 티켓이 없습니다.');
               return;
             }
             parentSelectionState = {
@@ -1986,11 +2197,51 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           }
 
           async function deleteTicket(ticketId) {
-            if (!confirm('Are you sure you want to delete this task?')) return;
+            const shouldDelete = await requestConfirm('Are you sure you want to delete this task?');
+            if (!shouldDelete) return;
             const response = await fetch(\`/api/tickets/\${ticketId}\`, {
               method: 'DELETE'
             });
             if (response.ok) window.location.reload();
+          }
+
+          async function deleteSelectedTickets() {
+            const ticketIds = Array.from(selectedTicketIds);
+            if (!ticketIds.length) return;
+            closeContextMenu();
+
+            const shouldDelete = await requestConfirm('Delete ' + ticketIds.length + ' selected tasks?');
+            if (!shouldDelete) return;
+
+            const btn = document.getElementById('bulkDeleteBtn');
+            const previousText = btn && btn.textContent ? btn.textContent : 'Delete Selected';
+            if (btn instanceof HTMLButtonElement) {
+              btn.disabled = true;
+              btn.textContent = 'Deleting...';
+            }
+
+            let failureCount = 0;
+            for (const ticketId of ticketIds) {
+              try {
+                const response = await fetch(\`/api/tickets/\${ticketId}\`, { method: 'DELETE' });
+                if (!response.ok) {
+                  failureCount += 1;
+                }
+              } catch {
+                failureCount += 1;
+              }
+            }
+
+            if (failureCount === 0) {
+              window.location.reload();
+              return;
+            }
+
+            if (btn instanceof HTMLButtonElement) {
+              btn.textContent = previousText;
+            }
+            updateBulkDeleteButtonState();
+            showNotice('일부 task 삭제에 실패했습니다. (' + failureCount + '개)');
           }
 
           function openCreateModal(parentTicketId = null) {
@@ -2110,6 +2361,11 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             if (projectContextModal && projectContextModal.classList.contains('active')) {
               closeProjectContextModal();
             }
+            const confirmActionModal = document.getElementById('confirmActionModal');
+            if (confirmActionModal && confirmActionModal.classList.contains('active')) {
+              closeConfirmModal(false);
+              return;
+            }
             if (parentSelectionState) {
               cancelParentSelection();
               return;
@@ -2207,6 +2463,16 @@ function renderListRow(t: TicketItem, users: UserItem[], depth: number, path: nu
 
   return `
     <tr class="list-row" draggable="true" data-ticket-id="${t.id}" data-path="${path.join('.')}" data-status="${t.status}" data-assignee-key="${escapeHtml(assigneeKey)}" data-assignee-name="${escapeHtml(assigneeName)}" data-created-at-ts="${Number.isFinite(createdAtTs) ? createdAtTs : 0}">
+      <td class="list-col-select">
+        <input
+          type="checkbox"
+          class="ticket-select-checkbox ticket-row-select"
+          data-ticket-select-id="${t.id}"
+          aria-label="Select ${escapeHtml(t.ticket_title)}"
+          onclick="event.stopPropagation()"
+          onchange="toggleTicketSelection(event, ${t.id})"
+        />
+      </td>
       <td class="list-col-id" style="font-weight: 700; color: var(--text-secondary); font-size: 11px; letter-spacing: 0.05em;">
         ${escapeHtml(t.ticket_title)}
       </td>

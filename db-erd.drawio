@@ -1,0 +1,76 @@
+<mxfile host="app.diagrams.net" modified="2026-02-19T00:00:00.000Z" agent="cursor" version="24.7.17">
+  <diagram id="db-erd-page" name="Slack Attendance DB ERD (79dc67d)">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1920" pageHeight="1080" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="users" value="users&#xa;------------------------------&#xa;PK id INTEGER&#xa;UQ user_id TEXT&#xa;user_name TEXT&#xa;display_name TEXT&#xa;email TEXT&#xa;team_id TEXT&#xa;role TEXT&#xa;is_active INTEGER&#xa;created_at DATETIME&#xa;updated_at DATETIME" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="40" width="300" height="290" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="work_tickets" value="work_tickets&#xa;------------------------------&#xa;PK id INTEGER&#xa;user_id TEXT&#xa;user_name TEXT&#xa;team_id TEXT&#xa;ticket_title TEXT&#xa;ticket_description TEXT&#xa;status TEXT&#xa;assignee_id TEXT&#xa;assignee_name TEXT&#xa;parent_ticket_id INTEGER&#xa;sort_order INTEGER&#xa;created_at DATETIME&#xa;started_at DATETIME&#xa;completed_at DATETIME" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="430" y="40" width="350" height="340" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="attendance" value="attendance&#xa;------------------------------&#xa;PK id INTEGER&#xa;user_id TEXT&#xa;user_name TEXT&#xa;team_id TEXT&#xa;type TEXT (in|out)&#xa;timestamp DATETIME&#xa;is_auto INTEGER&#xa;created_at DATETIME" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="60" y="380" width="300" height="250" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="work_logs" value="work_logs&#xa;------------------------------&#xa;PK id INTEGER&#xa;user_id TEXT&#xa;user_name TEXT&#xa;team_id TEXT&#xa;log_content TEXT&#xa;timestamp DATETIME&#xa;created_at DATETIME" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="430" y="420" width="330" height="220" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="meeting_polls" value="meeting_polls&#xa;------------------------------&#xa;PK id INTEGER&#xa;title TEXT&#xa;duration_minutes INTEGER&#xa;timezone TEXT&#xa;windows_json TEXT&#xa;created_by TEXT&#xa;created_at DATETIME" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="860" y="40" width="330" height="220" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="meeting_availability" value="meeting_availability&#xa;------------------------------&#xa;PK id INTEGER&#xa;FK meeting_id INTEGER&#xa;participant_name TEXT&#xa;slot_key TEXT&#xa;created_at DATETIME&#xa;UNIQUE(meeting_id, participant_name, slot_key)" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="860" y="320" width="360" height="220" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="sessions" value="sessions&#xa;------------------------------&#xa;PK token TEXT&#xa;created_at INTEGER&#xa;expires_at INTEGER" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="60" width="260" height="160" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="session_profiles" value="session_profiles&#xa;------------------------------&#xa;PK/FK token TEXT&#xa;initials TEXT" style="shape=rectangle;whiteSpace=wrap;html=0;rounded=0;fillColor=#111111;strokeColor=#222222;fontColor=#ffffff;align=left;verticalAlign=top;spacing=10;" vertex="1" parent="1">
+          <mxGeometry x="1280" y="290" width="260" height="140" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge_tickets_user" value="work_tickets.user_id -&gt; users.user_id (logical)" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;" edge="1" parent="1" source="work_tickets" target="users">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge_tickets_assignee" value="work_tickets.assignee_id -&gt; users.user_id (logical)" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;dashed=1;" edge="1" parent="1" source="work_tickets" target="users">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge_tickets_parent" value="work_tickets.parent_ticket_id -&gt; work_tickets.id" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;dashed=1;" edge="1" parent="1" source="work_tickets" target="work_tickets">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="800" y="210"/>
+              <mxPoint x="830" y="210"/>
+              <mxPoint x="830" y="80"/>
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <mxCell id="edge_attendance_user" value="attendance.user_id -&gt; users.user_id (logical)" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;dashed=1;" edge="1" parent="1" source="attendance" target="users">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge_logs_user" value="work_logs.user_id -&gt; users.user_id (logical)" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;dashed=1;" edge="1" parent="1" source="work_logs" target="users">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge_availability_poll" value="meeting_availability.meeting_id -&gt; meeting_polls.id (FK)" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;" edge="1" parent="1" source="meeting_availability" target="meeting_polls">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge_profile_session" value="session_profiles.token -&gt; sessions.token (logical)" style="endArrow=block;html=1;rounded=0;strokeColor=#666666;fontColor=#666666;dashed=1;" edge="1" parent="1" source="session_profiles" target="sessions">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

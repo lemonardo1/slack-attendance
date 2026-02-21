@@ -105,6 +105,24 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
       }
       .meeting-item:hover { border-color: var(--accent); }
       .meeting-meta { color: var(--sub); font-size: 12px; margin-top: 4px; }
+      .notice-toast {
+        display: none;
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        z-index: 2000;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--text);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 10px 14px;
+        max-width: min(680px, calc(100vw - 24px));
+      }
+      .notice-toast.error { border-color: #ff4444; }
+      .notice-toast.active { display: block; }
       @media (max-width: 900px) {
         body { padding: 20px; }
         .grid { grid-template-columns: 1fr; }
@@ -185,6 +203,7 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
         <button type="button" class="btn btn-ghost" data-remove>삭제</button>
       </div>
     </template>
+    <div id="noticeToast" class="notice-toast" aria-live="polite"></div>
 
     <script>
       const windowsEl = document.getElementById('windows');
@@ -195,6 +214,22 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
       const aiHelp = document.getElementById('aiHelp');
       const isAiScheduleEnabled = ${isAiScheduleEnabled ? 'true' : 'false'};
       const PROJECT_CONTEXT_STORAGE_KEY = 'projectCoreContext';
+      let noticeTimer = null;
+
+      function showNotice(message, type = 'error') {
+        const toast = document.getElementById('noticeToast');
+        if (!toast) return;
+        toast.textContent = String(message || '').trim();
+        toast.classList.remove('error');
+        if (type === 'error') {
+          toast.classList.add('error');
+        }
+        toast.classList.add('active');
+        if (noticeTimer) clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => {
+          toast.classList.remove('active');
+        }, 2600);
+      }
 
       function fillHourOptions(selectEl, selected) {
         selectEl.innerHTML = '';
@@ -285,8 +320,14 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
         const title = document.getElementById('title').value.trim();
         const duration_minutes = Number(document.getElementById('duration').value);
         const windows = getWindows();
-        if (!title) return alert('회의 제목을 입력해주세요.');
-        if (!windows.length) return alert('최소 1개 시간 범위를 추가해주세요.');
+        if (!title) {
+          showNotice('회의 제목을 입력해주세요.');
+          return;
+        }
+        if (!windows.length) {
+          showNotice('최소 1개 시간 범위를 추가해주세요.');
+          return;
+        }
 
         const res = await fetch('/api/meetings', {
           method: 'POST',
@@ -295,7 +336,7 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
         });
         const data = await res.json();
         if (!res.ok) {
-          alert(data.error || '회의 생성 실패');
+          showNotice(data.error || '회의 생성 실패');
           return;
         }
         location.href = '/meetings/' + data.meeting_id;
@@ -303,14 +344,14 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
 
       generateByAiBtn.addEventListener('click', async () => {
         if (!isAiScheduleEnabled) {
-          alert('AI 일정 생성은 로그인 후 사용할 수 있습니다. /stats에서 로그인해주세요.');
+          showNotice('AI 일정 생성은 로그인 후 사용할 수 있습니다. /stats에서 로그인해주세요.');
           return;
         }
 
         const titleInput = document.getElementById('title');
         const title = titleInput.value.trim();
         if (!title) {
-          alert('먼저 회의 제목에 대략적인 회의 내용을 입력해주세요.');
+          showNotice('먼저 회의 제목에 대략적인 회의 내용을 입력해주세요.');
           titleInput.focus();
           return;
         }
@@ -331,7 +372,7 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
           });
           const data = await res.json();
           if (!res.ok) {
-            alert(data.error || 'AI 일정 생성에 실패했습니다.');
+            showNotice(data.error || 'AI 일정 생성에 실패했습니다.');
             aiHelp.textContent = 'AI 일정 생성에 실패했습니다. 제목을 조금 더 구체적으로 입력해보세요.';
             return;
           }
@@ -351,7 +392,7 @@ export function renderMeetingHomePage(isAiScheduleEnabled: boolean): string {
           aiHelp.textContent = '추천 반영 완료: ' + summary;
         } catch (error) {
           aiHelp.textContent = 'AI 일정 생성 중 오류가 발생했습니다.';
-          alert('AI 일정 생성 중 오류가 발생했습니다.');
+          showNotice('AI 일정 생성 중 오류가 발생했습니다.');
         } finally {
           generateByAiBtn.disabled = !isAiScheduleEnabled;
           generateByAiBtn.textContent = prevText;
@@ -453,6 +494,24 @@ export function renderMeetingDetailPage(meetingId: number): string {
         font-size: 12px;
       }
       .participants { color: var(--sub); font-size: 12px; margin-top: 6px; }
+      .notice-toast {
+        display: none;
+        position: fixed;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        z-index: 2000;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--text);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 10px 14px;
+        max-width: min(680px, calc(100vw - 24px));
+      }
+      .notice-toast.error { border-color: #ff4444; }
+      .notice-toast.active { display: block; }
       @media (max-width: 760px) {
         .controls { grid-template-columns: 1fr; }
       }
@@ -496,6 +555,7 @@ export function renderMeetingDetailPage(meetingId: number): string {
         <div id="bestSlots" class="best-list"></div>
       </section>
     </div>
+    <div id="noticeToast" class="notice-toast" aria-live="polite"></div>
 
     <script>
       const meetingId = ${meetingId};
@@ -510,6 +570,22 @@ export function renderMeetingDetailPage(meetingId: number): string {
       let selectedSlots = new Set();
       let isDragging = false;
       let dragShouldSelect = true;
+      let noticeTimer = null;
+
+      function showNotice(message, type = 'error') {
+        const toast = document.getElementById('noticeToast');
+        if (!toast) return;
+        toast.textContent = String(message || '').trim();
+        toast.classList.remove('error');
+        if (type === 'error') {
+          toast.classList.add('error');
+        }
+        toast.classList.add('active');
+        if (noticeTimer) clearTimeout(noticeTimer);
+        noticeTimer = setTimeout(() => {
+          toast.classList.remove('active');
+        }, 2600);
+      }
 
       function slotKey(day, hour) {
         return String(day) + '-' + String(hour).padStart(2, '0');
@@ -543,7 +619,7 @@ export function renderMeetingDetailPage(meetingId: number): string {
         const res = await fetch('/api/meetings/' + meetingId + qs);
         const data = await res.json();
         if (!res.ok) {
-          alert(data.error || '회의 정보를 불러오지 못했습니다.');
+          showNotice(data.error || '회의 정보를 불러오지 못했습니다.');
           return;
         }
         latestData = data;
@@ -662,7 +738,7 @@ export function renderMeetingDetailPage(meetingId: number): string {
       saveBtn.addEventListener('click', async () => {
         const participant_name = participantInput.value.trim();
         if (!participant_name) {
-          alert('이름을 입력해주세요.');
+          showNotice('이름을 입력해주세요.');
           participantInput.focus();
           return;
         }
@@ -677,7 +753,7 @@ export function renderMeetingDetailPage(meetingId: number): string {
         });
         const data = await res.json();
         if (!res.ok) {
-          alert(data.error || '저장에 실패했습니다.');
+          showNotice(data.error || '저장에 실패했습니다.');
           return;
         }
         await loadMeeting();

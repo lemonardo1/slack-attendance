@@ -129,7 +129,8 @@ npm run deploy
 Google 로그인을 활성화하려면 환경 변수에 아래 값을 추가하세요:
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
-- `GOOGLE_REDIRECT_URI` (선택, 미설정 시 `/stats/auth/google/callback` 자동 사용)
+- `GOOGLE_REDIRECT_URI` (선택, 배포용 콜백 URL)
+- `GOOGLE_REDIRECT_URI_LOCAL` (선택, 로컬용 콜백 URL. 기본값: `http://localhost:8787/stats/auth/google/callback`)
 - `GOOGLE_ALLOWED_DOMAIN` (선택, 예: `example.com` 또는 `example.com,example.org`)
 - `GEMINI_API_KEY` (Spark subtask 생성 기능 및 회의 AI 일정 생성 기능용)
 

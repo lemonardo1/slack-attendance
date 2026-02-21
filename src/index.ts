@@ -202,10 +202,17 @@ type GoogleEnvKey =
   | 'GOOGLE_CLIENT_ID'
   | 'GOOGLE_CLIENT_SECRET'
   | 'GOOGLE_REDIRECT_URI'
+  | 'GOOGLE_REDIRECT_URI_LOCAL'
   | 'GOOGLE_ALLOWED_DOMAIN';
 
 function getRawEnvVar(env: Env, key: string): string | undefined {
   return (env as unknown as Record<string, string | undefined>)[key];
+}
+
+function getGeminiGenerateContentUrl(env: Env, geminiApiKey: string): string {
+  const configuredModel = (getRawEnvVar(env, 'GEMINI_MODEL') || '').trim();
+  const model = configuredModel || 'gemini-3-flash-preview';
+  return `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
 }
 
 function getOptionalEnvVar(env: Env, key: GoogleEnvKey): string | undefined {
@@ -220,6 +227,17 @@ function isGoogleLoginEnabled(env: Env): boolean {
 }
 
 function getGoogleRedirectUri(request: Request, env: Env): string {
+  const requestUrl = new URL(request.url);
+  const isLocalRequest = requestUrl.hostname === 'localhost' || requestUrl.hostname === '127.0.0.1';
+  if (isLocalRequest) {
+    const localRedirectUri = getOptionalEnvVar(env, 'GOOGLE_REDIRECT_URI_LOCAL');
+    if (localRedirectUri) {
+      return localRedirectUri;
+    }
+    const localCallbackUrl = new URL('/stats/auth/google/callback', request.url);
+    return localCallbackUrl.toString();
+  }
+
   const configuredRedirectUri = getOptionalEnvVar(env, 'GOOGLE_REDIRECT_URI');
   if (configuredRedirectUri) {
     return configuredRedirectUri;
@@ -1194,10 +1212,13 @@ async function handleGenerateAiSubtasks(request: Request, env: Env, ticketId: nu
       "}",
       "규칙:",
       `- subtasks는 정확히 ${count}개`,
-      "- 각 항목은 12~80자 내외",
+      "- 각 항목은 8~24자 내외",
       "- 번호/불릿 접두어 금지",
       "- 의미 중복 금지",
-      "- 실제 작업 지시문 형태로 작성",
+      "- 서술형 문장 금지 (예: ~을 검토한다, ~를 파악한다)",
+      "- 명사구 기반의 짧은 작업명으로 작성",
+      "- 종결어미 금지 (한다/합니다/하세요/요)",
+      "- 예시: 피그마 파일 생성, 기획안 수정, QA 체크리스트 정리",
       "",
       `부모 티켓: ${parent.ticket_title}`,
       `부모 설명: ${parent.ticket_description}`,
@@ -1205,7 +1226,7 @@ async function handleGenerateAiSubtasks(request: Request, env: Env, ticketId: nu
       extraContext ? `추가 지시: ${extraContext}` : "추가 지시: 없음",
     ].join('\n');
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+    const geminiUrl = getGeminiGenerateContentUrl(env, geminiApiKey);
     const aiRes = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1350,7 +1371,7 @@ async function handleGenerateMeetingPlanByAi(request: Request, env: Env): Promis
       `회의 제목: ${roughTitle}`,
     ].join('\n');
 
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+    const geminiUrl = getGeminiGenerateContentUrl(env, geminiApiKey);
     const aiRes = await fetch(geminiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
