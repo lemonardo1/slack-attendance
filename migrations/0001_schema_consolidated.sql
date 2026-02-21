@@ -1,4 +1,4 @@
--- Consolidated base schema (merged from previous split migrations).
+-- Consolidated base schema (includes legacy 0012/0013 changes).
 -- This migration is intentionally idempotent for existing environments.
 
 DROP TABLE IF EXISTS comments;
@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS attendance (
   team_id TEXT NOT NULL,
   type TEXT NOT NULL CHECK(type IN ('in', 'out')),
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   is_auto INTEGER NOT NULL DEFAULT 0
 );
 
@@ -25,8 +24,7 @@ CREATE TABLE IF NOT EXISTS work_logs (
   user_name TEXT NOT NULL,
   team_id TEXT NOT NULL,
   log_content TEXT NOT NULL,
-  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_logs_user_timestamp
@@ -88,7 +86,6 @@ CREATE TABLE IF NOT EXISTS meeting_polls (
   duration_minutes INTEGER NOT NULL DEFAULT 60,
   timezone TEXT NOT NULL DEFAULT 'Asia/Seoul',
   windows_json TEXT NOT NULL,
-  created_by TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -97,7 +94,6 @@ CREATE TABLE IF NOT EXISTS meeting_availability (
   meeting_id INTEGER NOT NULL,
   participant_name TEXT NOT NULL,
   slot_key TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (meeting_id) REFERENCES meeting_polls(id) ON DELETE CASCADE,
   UNIQUE(meeting_id, participant_name, slot_key)
 );
@@ -118,5 +114,9 @@ CREATE INDEX IF NOT EXISTS idx_sessions_expires_at
 
 CREATE TABLE IF NOT EXISTS session_profiles (
   token TEXT PRIMARY KEY,
-  initials TEXT NOT NULL
+  initials TEXT NOT NULL,
+  email TEXT,
+  display_name TEXT,
+  provider TEXT,
+  provider_user_id TEXT
 );
