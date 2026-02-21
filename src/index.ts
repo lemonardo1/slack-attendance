@@ -35,6 +35,91 @@ const STATS_ADMIN_EMAIL = 'lemonaatree@gmail.com';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
+const TICKET_UPDATES_ROOM = "ticket-board-global";
+
+type TicketRealtimeEvent = {
+  type: "ticket_status_updated";
+  ticketId: number;
+  status: "pending" | "in_progress" | "completed";
+  updatedAt: string;
+};
+
+type TicketUpdatesEnv = {
+  TICKET_UPDATES?: DurableObjectNamespace;
+};
+
+function getTicketUpdatesNamespace(env: Env): DurableObjectNamespace | null {
+  const namespace = (env as unknown as TicketUpdatesEnv).TICKET_UPDATES;
+  return namespace || null;
+}
+
+async function publishTicketRealtimeEvent(env: Env, event: TicketRealtimeEvent): Promise<void> {
+  try {
+    const namespace = getTicketUpdatesNamespace(env);
+    if (!namespace) return;
+    const stub = namespace.get(namespace.idFromName(TICKET_UPDATES_ROOM));
+    await stub.fetch("https://ticket-updates.internal/broadcast", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(event),
+    });
+  } catch (error) {
+    console.error("Publish realtime event error:", error);
+  }
+}
+
+export class TicketUpdatesDurableObject {
+  private readonly sockets = new Set<WebSocket>();
+
+  constructor(private readonly state: DurableObjectState, private readonly env: Env) {
+    void this.state;
+    void this.env;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    const upgradeHeader = request.headers.get("Upgrade");
+
+    if (upgradeHeader && upgradeHeader.toLowerCase() === "websocket") {
+      const pair = new WebSocketPair();
+      const client = pair[0];
+      const server = pair[1];
+      server.accept();
+
+      this.sockets.add(server);
+      server.addEventListener("close", () => this.sockets.delete(server));
+      server.addEventListener("error", () => this.sockets.delete(server));
+      server.addEventListener("message", (event) => {
+        if (String(event.data || "") === "ping") {
+          try {
+            server.send("pong");
+          } catch {
+            this.sockets.delete(server);
+          }
+        }
+      });
+
+      return new Response(null, { status: 101, webSocket: client });
+    }
+
+    if (url.pathname === "/broadcast" && request.method === "POST") {
+      const payloadText = await request.text();
+      for (const socket of this.sockets) {
+        try {
+          socket.send(payloadText);
+        } catch {
+          this.sockets.delete(socket);
+        }
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("Not Found", { status: 404 });
+  }
+}
 
 function createManualAssigneeId(name: string, teamId?: string): string {
   const nameSlug = name
@@ -767,6 +852,13 @@ async function handleUpdateTicketStatus(request: Request, env: Env, ticketId: nu
         "UPDATE work_tickets SET status = ? WHERE id = ?"
       ).bind(body.status, ticketId).run();
     }
+
+    await publishTicketRealtimeEvent(env, {
+      type: "ticket_status_updated",
+      ticketId,
+      status: body.status as "pending" | "in_progress" | "completed",
+      updatedAt: new Date().toISOString(),
+    });
 
     return new Response(
       JSON.stringify({ success: true }),
@@ -2120,6 +2212,17 @@ async function handleAuthSession(request: Request, env: Env): Promise<Response> 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    if (url.pathname === '/ws') {
+      const namespace = getTicketUpdatesNamespace(env);
+      if (!namespace) {
+        return new Response('Realtime is not configured', { status: 501 });
+      }
+      const stub = namespace.get(namespace.idFromName(TICKET_UPDATES_ROOM));
+      return stub.fetch("https://ticket-updates.internal/ws", {
+        headers: request.headers,
+      });
+    }
 
     // Favicon endpoint
     if (url.pathname === '/favicon.ico') {

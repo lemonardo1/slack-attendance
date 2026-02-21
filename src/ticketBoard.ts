@@ -938,15 +938,15 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               <div class="stats">
                 <div class="stat-item">
                   <span class="label">Total</span>
-                  <span class="count">${totalTickets}</span>
+                  <span class="count" id="countTotal">${totalTickets}</span>
                 </div>
                 <div class="stat-item">
                   <span class="label">Doing</span>
-                  <span class="count">${inProgressCount}</span>
+                  <span class="count" id="countDoing">${inProgressCount}</span>
                 </div>
                 <div class="stat-item">
                   <span class="label">Done</span>
-                  <span class="count">${completedCount}</span>
+                  <span class="count" id="countDone">${completedCount}</span>
                 </div>
                 <button class="bulk-delete-btn" id="bulkDeleteBtn" onclick="deleteSelectedTickets()" disabled>Delete Selected</button>
                 <button class="create-btn" onclick="openCreateModal()">New Task</button>
@@ -959,23 +959,29 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           <div class="kanban-grid">
             <div class="kanban-column">
               <div class="column-header">
-                <h2>Pending [${pendingCount}]</h2>
+                <h2 id="columnHeaderPending">Pending [${pendingCount}]</h2>
               </div>
-              ${renderColumnCards(tickets, 'pending', users)}
+              <div id="column-body-pending">
+                ${renderColumnCards(tickets, 'pending', users)}
+              </div>
             </div>
 
             <div class="kanban-column" style="border-left: 1px solid var(--border-color); border-right: 1px solid var(--border-color);">
               <div class="column-header">
-                <h2>In Progress [${inProgressCount}]</h2>
+                <h2 id="columnHeaderInProgress">In Progress [${inProgressCount}]</h2>
               </div>
-              ${renderColumnCards(tickets, 'in_progress', users)}
+              <div id="column-body-in_progress">
+                ${renderColumnCards(tickets, 'in_progress', users)}
+              </div>
             </div>
 
             <div class="kanban-column">
               <div class="column-header">
-                <h2>Completed [${completedCount}]</h2>
+                <h2 id="columnHeaderCompleted">Completed [${completedCount}]</h2>
               </div>
-              ${renderColumnCards(tickets, 'completed', users)}
+              <div id="column-body-completed">
+                ${renderColumnCards(tickets, 'completed', users)}
+              </div>
             </div>
           </div>
 
@@ -1127,6 +1133,20 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
           let selectedTicketIds = new Set();
           let noticeTimer = null;
           let confirmResolver = null;
+          let ticketRealtimeSocket = null;
+          let ticketRealtimeReconnectTimer = null;
+          let ticketRealtimeReconnectDelayMs = 1000;
+          const MAX_TICKET_REALTIME_RECONNECT_DELAY_MS = 15000;
+          const STATUS_LABELS = {
+            pending: 'pending',
+            in_progress: 'in progress',
+            completed: 'completed'
+          };
+          const STATUS_COLORS = {
+            pending: 'var(--status-pending)',
+            in_progress: 'var(--status-in-progress)',
+            completed: 'var(--status-completed)'
+          };
 
           function showNotice(message, type = 'error') {
             const toast = document.getElementById('noticeToast');
@@ -1193,7 +1213,18 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             initializeAssigneeFilter();
             initListDragAndDrop();
             initializeTicketSelection();
+            connectTicketRealtimeSocket();
             document.addEventListener('click', handleParentSelectionClick, true);
+          });
+          window.addEventListener('beforeunload', () => {
+            if (ticketRealtimeReconnectTimer) {
+              clearTimeout(ticketRealtimeReconnectTimer);
+              ticketRealtimeReconnectTimer = null;
+            }
+            if (ticketRealtimeSocket) {
+              ticketRealtimeSocket.close();
+              ticketRealtimeSocket = null;
+            }
           });
 
           function getProjectContext() {
@@ -2009,7 +2040,134 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ status })
             });
-            if (response.ok) window.location.reload();
+            if (!response.ok) return;
+            applyStatusToTicket(ticketId, status);
+          }
+
+          function normalizeTicketStatus(status) {
+            if (status === 'pending' || status === 'in_progress' || status === 'completed') {
+              return status;
+            }
+            return null;
+          }
+
+          function updateTicketCounters() {
+            const pending = document.querySelectorAll('.ticket-card[data-status="pending"]').length;
+            const inProgress = document.querySelectorAll('.ticket-card[data-status="in_progress"]').length;
+            const completed = document.querySelectorAll('.ticket-card[data-status="completed"]').length;
+            const total = pending + inProgress + completed;
+
+            const totalEl = document.getElementById('countTotal');
+            const doingEl = document.getElementById('countDoing');
+            const doneEl = document.getElementById('countDone');
+            const pendingHeader = document.getElementById('columnHeaderPending');
+            const inProgressHeader = document.getElementById('columnHeaderInProgress');
+            const completedHeader = document.getElementById('columnHeaderCompleted');
+
+            if (totalEl) totalEl.textContent = String(total);
+            if (doingEl) doingEl.textContent = String(inProgress);
+            if (doneEl) doneEl.textContent = String(completed);
+            if (pendingHeader) pendingHeader.textContent = 'Pending [' + pending + ']';
+            if (inProgressHeader) inProgressHeader.textContent = 'In Progress [' + inProgress + ']';
+            if (completedHeader) completedHeader.textContent = 'Completed [' + completed + ']';
+          }
+
+          function moveTicketCardToStatusColumn(ticketId, status) {
+            const card = document.querySelector('.ticket-card[data-ticket-id="' + ticketId + '"]');
+            if (!card) return;
+            const targetColumn = document.getElementById('column-body-' + status);
+            if (!targetColumn) return;
+            if (card.parentElement === targetColumn) return;
+            targetColumn.appendChild(card);
+          }
+
+          function applyStatusToTicket(ticketId, status) {
+            const normalizedStatus = normalizeTicketStatus(status);
+            if (!normalizedStatus) return;
+
+            const card = document.querySelector('.ticket-card[data-ticket-id="' + ticketId + '"]');
+            if (card) {
+              card.dataset.status = normalizedStatus;
+            }
+
+            const row = document.querySelector('.list-row[data-ticket-id="' + ticketId + '"]');
+            if (row) {
+              row.dataset.status = normalizedStatus;
+            }
+
+            const statusTag = document.querySelector('[data-ticket-status-id="' + ticketId + '"]');
+            if (statusTag) {
+              const color = STATUS_COLORS[normalizedStatus];
+              statusTag.textContent = STATUS_LABELS[normalizedStatus];
+              statusTag.style.color = color;
+              statusTag.style.borderColor = color;
+            }
+
+            moveTicketCardToStatusColumn(ticketId, normalizedStatus);
+            applyCombinedFilters();
+            applyListSort();
+            updateTicketCounters();
+          }
+
+          function handleTicketRealtimeMessage(rawMessage) {
+            let payload = null;
+            try {
+              payload = JSON.parse(rawMessage);
+            } catch {
+              return;
+            }
+            if (!payload || payload.type !== 'ticket_status_updated') return;
+            const ticketId = Number(payload.ticketId);
+            const status = normalizeTicketStatus(payload.status);
+            if (!Number.isInteger(ticketId) || !status) return;
+            applyStatusToTicket(ticketId, status);
+          }
+
+          function connectTicketRealtimeSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = protocol + '//' + window.location.host + '/ws';
+
+            try {
+              const socket = new WebSocket(wsUrl);
+              ticketRealtimeSocket = socket;
+
+              socket.addEventListener('open', () => {
+                ticketRealtimeReconnectDelayMs = 1000;
+              });
+
+              socket.addEventListener('message', (event) => {
+                if (typeof event.data !== 'string') return;
+                handleTicketRealtimeMessage(event.data);
+              });
+
+              socket.addEventListener('close', () => {
+                if (ticketRealtimeSocket !== socket) return;
+                ticketRealtimeSocket = null;
+                if (ticketRealtimeReconnectTimer) {
+                  clearTimeout(ticketRealtimeReconnectTimer);
+                }
+                ticketRealtimeReconnectTimer = setTimeout(() => {
+                  connectTicketRealtimeSocket();
+                }, ticketRealtimeReconnectDelayMs);
+                ticketRealtimeReconnectDelayMs = Math.min(ticketRealtimeReconnectDelayMs * 2, MAX_TICKET_REALTIME_RECONNECT_DELAY_MS);
+              });
+
+              socket.addEventListener('error', () => {
+                try {
+                  socket.close();
+                } catch {
+                  // ignore
+                }
+              });
+            } catch {
+              if (ticketRealtimeReconnectTimer) {
+                clearTimeout(ticketRealtimeReconnectTimer);
+              }
+              ticketRealtimeReconnectTimer = setTimeout(() => {
+                connectTicketRealtimeSocket();
+              }, ticketRealtimeReconnectDelayMs);
+              ticketRealtimeReconnectDelayMs = Math.min(ticketRealtimeReconnectDelayMs * 2, MAX_TICKET_REALTIME_RECONNECT_DELAY_MS);
+            }
           }
 
           async function updateHierarchy(ticketId, parentTicketId) {
@@ -2527,7 +2685,7 @@ function renderListRow(t: TicketItem, users: UserItem[], depth: number, path: nu
       </td>
       <td class="list-col-status">
         <div style="position: relative; display: inline-block;">
-          <span class="status-tag" style="color: ${statusColor}; border-color: ${statusColor}" onclick="toggleDropdown(event)">${t.status.replace('_', ' ')}</span>
+          <span class="status-tag" data-ticket-status-id="${t.id}" style="color: ${statusColor}; border-color: ${statusColor}" onclick="toggleDropdown(event)">${t.status.replace('_', ' ')}</span>
           <div class="dropdown-menu" style="left: 0; right: auto;">
             <div class="dropdown-item" onclick="updateStatus(${t.id}, 'pending')">Pending</div>
             <div class="dropdown-item" onclick="updateStatus(${t.id}, 'in_progress')">In Progress</div>

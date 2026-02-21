@@ -10,6 +10,22 @@
       "database_name": "your-database-name"
     }
   ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TICKET_UPDATES",
+        "class_name": "TicketUpdatesDurableObject"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1-ticket-updates",
+      "new_sqlite_classes": [
+        "TicketUpdatesDurableObject"
+      ]
+    }
+  ],
   "vars": {
     "SLACK_SIGNING_SECRET": "",
     "SLACK_WEBHOOK_URL": "",
