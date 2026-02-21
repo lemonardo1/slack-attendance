@@ -1063,6 +1063,7 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             <h2 style="text-transform: uppercase; letter-spacing: 0.1em;">Create Task</h2>
             <form onsubmit="createTicket(event)">
               <textarea name="ticketDescription" rows="3" placeholder="DESCRIBE THE TASK..." onkeydown="handleCreateModalKeydown(event)" required></textarea>
+              <p style="margin: 0 0 14px; color: var(--text-secondary); font-size: 11px; letter-spacing: 0.04em;">⏎ ENTER to create · SHIFT + ENTER for newline</p>
               <div style="display: flex; gap: 16px; justify-content: flex-end;">
                 <button type="button" class="create-btn" style="background: var(--card-bg); color: white; border: 1px solid var(--border-color);" onclick="closeCreateModal()">Cancel</button>
                 <button type="submit" class="create-btn">Create</button>
