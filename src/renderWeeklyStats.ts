@@ -108,27 +108,6 @@ export function renderLoginPage(options?: LoginPageOptions): string {
           .form-group {
             margin-bottom: 16px;
           }
-          label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--text-secondary);
-            font-weight: 700;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-          }
-          input[type="password"] {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid var(--border-color);
-            background: #0b0b0b;
-            color: var(--text-primary);
-            font-size: 14px;
-          }
-          input[type="password"]:focus {
-            outline: none;
-            border-color: var(--text-primary);
-          }
           .action-btn {
             display: inline-flex;
             align-items: center;
@@ -149,24 +128,7 @@ export function renderLoginPage(options?: LoginPageOptions): string {
             border-color: var(--text-primary);
           }
           .google-btn {
-            margin-bottom: 12px;
-          }
-          .divider {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin: 12px 0 16px;
-            color: var(--text-secondary);
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-          }
-          .divider::before,
-          .divider::after {
-            content: '';
-            height: 1px;
-            background: var(--border-color);
-            flex: 1;
+            margin-bottom: 0;
           }
           .error {
             color: #ff9f9f;
@@ -204,19 +166,11 @@ export function renderLoginPage(options?: LoginPageOptions): string {
           </header>
           <section class="login-wrap">
             <h2 class="panel-title">관리자 로그인</h2>
-            <p class="panel-subtitle">Google 또는 비밀번호로 계속하세요.</p>
+            <p class="panel-subtitle">등록된 관리자 Google 계정으로 계속하세요.</p>
             ${errorMessage ? `<div class="error">${escapeHtml(errorMessage)}</div>` : ''}
             ${googleLoginEnabled ? `
               <a class="action-btn google-btn" href="/stats/auth/google">Google 로그인</a>
-              <div class="divider">또는 비밀번호 로그인</div>
-            ` : ''}
-            <form method="POST" action="/stats/login">
-              <div class="form-group">
-                <label for="password">비밀번호</label>
-                <input type="password" id="password" name="password" required autofocus />
-              </div>
-              <button type="submit" class="action-btn">로그인</button>
-            </form>
+            ` : `<p class="panel-subtitle">Google 로그인 설정이 필요합니다.</p>`}
             <a class="back-link" href="/">Board로 이동</a>
           </section>
         </div>

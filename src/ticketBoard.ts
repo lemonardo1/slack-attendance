@@ -727,6 +727,14 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
             width: 90%;
             max-width: 600px;
           }
+          .create-modal-content {
+            max-width: 560px;
+            padding: 28px 32px;
+          }
+          .create-modal-content textarea {
+            margin: 16px 0;
+            padding: 12px;
+          }
           .notice-toast {
             display: none;
             position: fixed;
@@ -1051,10 +1059,10 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
 
         <!-- Create Modal -->
         <div class="modal" id="createModal">
-          <div class="modal-content">
+          <div class="modal-content create-modal-content">
             <h2 style="text-transform: uppercase; letter-spacing: 0.1em;">Create Task</h2>
             <form onsubmit="createTicket(event)">
-              <textarea name="ticketDescription" rows="4" placeholder="DESCRIBE THE TASK..." required></textarea>
+              <textarea name="ticketDescription" rows="3" placeholder="DESCRIBE THE TASK..." onkeydown="handleCreateModalKeydown(event)" required></textarea>
               <div style="display: flex; gap: 16px; justify-content: flex-end;">
                 <button type="button" class="create-btn" style="background: var(--card-bg); color: white; border: 1px solid var(--border-color);" onclick="closeCreateModal()">Cancel</button>
                 <button type="submit" class="create-btn">Create</button>
@@ -2349,6 +2357,15 @@ export function renderTicketBoardPage(tickets: TicketItem[], users: UserItem[]):
               })
             });
             if (response.ok) window.location.reload();
+          }
+
+          function handleCreateModalKeydown(event) {
+            if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+            event.preventDefault();
+            const form = event.target && 'form' in event.target ? event.target.form : null;
+            if (form) {
+              form.requestSubmit();
+            }
           }
 
           document.addEventListener('click', () => {

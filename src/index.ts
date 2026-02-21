@@ -1,6 +1,6 @@
 import { renderHtml } from "./renderHtml";
 import { verifySlackSignature } from "./slackVerify";
-import { generateSessionToken, createSessionCookie, getSessionFromCookie, verifyPassword } from "./auth";
+import { generateSessionToken, createSessionCookie, getSessionFromCookie } from "./auth";
 import {
   getWeekStart,
   getWeekDates,
@@ -31,6 +31,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24;
 const GOOGLE_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 const GOOGLE_OAUTH_STATE_COOKIE = 'google_oauth_state';
 const SESSION_DEFAULT_INITIALS = 'ME';
+const STATS_ADMIN_EMAIL = 'lemonaatree@gmail.com';
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const AUTO_OUT_AFTER_HOURS_MS = 4 * 60 * 60 * 1000;
@@ -302,6 +303,10 @@ function isEmailAllowedByDomain(email: string, env: Env): boolean {
   if (!domain) return false;
 
   return allowedDomains.includes(domain);
+}
+
+function isStatsAdminEmail(email: string): boolean {
+  return email.trim().toLowerCase() === STATS_ADMIN_EMAIL;
 }
 
 type LastAttendanceRecord = {
@@ -1901,14 +1906,14 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     });
   }
 
-  const code = url.searchParams.get('code');
+  const codeParam = url.searchParams.get('code');
   const state = url.searchParams.get('state');
   const cookieState = getCookieValue(request.headers.get('Cookie'), GOOGLE_OAUTH_STATE_COOKIE);
-  const isStateValid = Boolean(code) && Boolean(state) && cookieState === state;
+  const isStateValid = Boolean(codeParam) && Boolean(state) && cookieState === state;
 
   console.log('[GoogleAuth][Callback] Parsed callback query params', {
-    hasCode: Boolean(code),
-    codeLength: code?.length ?? 0,
+    hasCode: Boolean(codeParam),
+    codeLength: codeParam?.length ?? 0,
     stateSuffix: maskForLog(state),
     cookieStateSuffix: maskForLog(cookieState),
     isStateValid,
@@ -1922,6 +1927,13 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
     return new Response('', {
       status: 302,
       headers,
+    });
+  }
+  const code = codeParam;
+  if (!code) {
+    return new Response('', {
+      status: 302,
+      headers: { Location: '/stats?error=Google%20authorization%20code%20is%20missing' },
     });
   }
 
@@ -2025,6 +2037,16 @@ async function handleGoogleLoginCallback(request: Request, env: Env): Promise<Re
       });
     }
 
+    if (!isStatsAdminEmail(userInfo.email)) {
+      console.warn('[GoogleAuth][Callback] Non-admin email denied', {
+        emailSuffix: maskForLog(userInfo.email, 6),
+      });
+      return new Response('', {
+        status: 302,
+        headers: { Location: '/stats?error=This%20Google%20account%20does%20not%20have%20admin%20access' },
+      });
+    }
+
     const sessionToken = generateSessionToken();
     await createSession(env, sessionToken, deriveInitialsFromIdentity(userInfo.email));
     const headers = new Headers();
@@ -2054,30 +2076,12 @@ async function handleLogin(request: Request, env: Env): Promise<Response> {
     return new Response('Method not allowed', { status: 405 });
   }
 
-  const formData = await request.formData();
-  const password = formData.get('password') as string;
-
-  const adminPassword = env.ADMIN_PASSWORD || 'admin123';
-
-  if (verifyPassword(password, adminPassword)) {
-    const sessionToken = generateSessionToken();
-    await createSession(env, sessionToken, 'AD');
-
-    return new Response('', {
-      status: 302,
-      headers: {
-        'Location': '/stats',
-        'Set-Cookie': createSessionCookie(sessionToken),
-      },
-    });
-  }
-
   return new Response(renderLoginPage({
-    errorMessage: '비밀번호가 올바르지 않습니다.',
+    errorMessage: '비밀번호 로그인은 비활성화되었습니다. Google 계정으로 로그인해주세요.',
     googleLoginEnabled: isGoogleLoginEnabled(env),
   }), {
     headers: { "content-type": "text/html" },
-    status: 401,
+    status: 403,
   });
 }
 

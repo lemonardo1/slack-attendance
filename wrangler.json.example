@@ -12,7 +12,6 @@
   ],
   "vars": {
     "SLACK_SIGNING_SECRET": "",
-    "ADMIN_PASSWORD": "",
     "SLACK_WEBHOOK_URL": "",
     "WORKER_URL": "",
     "GOOGLE_CLIENT_ID": "",
@@ -23,7 +22,10 @@
     "GEMINI_API_KEY": ""
   },
   "triggers": {
-    "crons": ["0 0 * * 6", "0 19 * * *"]
+    "crons": [
+      "0 0 * * 6",
+      "0 19 * * *"
+    ]
   },
   "observability": {
     "enabled": true
